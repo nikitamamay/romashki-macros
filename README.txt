@@ -3,6 +3,9 @@
 Установка и настройка
 =====================
 
+Установить пакет pywin32:
+	pip install pywin32
+
 Согласно источнику [https://youtu.be/UVCH_wDlFNU?t=863],
 cкопировать файлы:
 	Kompas6API5.py
@@ -53,4 +56,14 @@ python server.py
 	Описание: произвольное.
 Настроить интерфейс: добавить кнопку на существующую или новую панель и/или
 	назначить горячую клавишу.
+
+Поддерживаемые названия команд:
+	change_bg
+	fast_mate
+	drawing_stamp
+	export_png
+	export_pdf_2d
+	export_step
+	fix_LCS
+
 
