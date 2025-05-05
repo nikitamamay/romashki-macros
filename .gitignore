@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+
+# specific for this project
+RomashkiMacros.exe
+file_version_info.txt
+last_version.txt
