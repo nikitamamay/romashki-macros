@@ -42,10 +42,30 @@ def ensure_value(value, default):
 
 
 def set_material_in_current_part(material: str, density: int) -> None:
-    """ Назначить материал для текущей детали. Плотность `density` здесь выражается в кг/м3."""
+    """
+    Назначить материал для текущей детали или для тел, если они выбраны.
+
+    Плотность `density` здесь выражается в кг/м3.
+    """
     doc, part = open_part()
-    part.SetMaterial(material, density / 1000)
-    part.Update()
+    selected_bodies = get_selected(doc, (KAPI7.IBody7))
+
+    # если выбраны тела, то применяется материал для этих тел
+    if len(selected_bodies) != 0:
+        print(f"Применяется материал для {len(selected_bodies)} выбранных тел")
+        for body in selected_bodies:
+            mip = KAPI7.IMassInertiaParam7(body)
+            mip.DensityMode = True  # ручное задание плотности, а не из Справочника (?)
+            mip.SetMaterial(material, density / 1000)
+            mip.Calculate()
+            body.Update()
+        part.Update()
+
+    # если тела не выбраны, то - для всей модели целиком
+    else:
+        print("Применяется материал для текущей модели")
+        part.SetMaterial(material, density / 1000)
+        part.Update()
 
 
 def get_material_in_current_part() -> tuple[str, float]:
