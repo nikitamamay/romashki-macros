@@ -25,8 +25,15 @@
 предназначенную только для сварных швов; её следует вставить в основную сборку
 без включения в спецификацию.
 В основной сборке пользователь выбирает объекты модели, по которым происходит
-сварка: ребра; грани; ломаные линии; эскизы целиком; линии эскизов; набор
-точек и вершин линии сварного шва.
+сварка:
+* набор точек или вершин
+    для формирования одной линии сварного шва через эти точки;
+* ребра, ломаные линии, отрезки, линии эскизов
+    для формирования нескольких линий сварных швов по этим ребрам;
+* грани и эскизы целиком и, по необходимости, точки
+    для формирования сварных швов по контурам граней или ребер эскиза,
+    а при выборе точек - только по тем контурам, если они содержат хотя бы одну
+    из выбранных точек.
 Затем выполняется команда макроса. В модели для сварных швов создаются
 *неассоциативные* ломаные линии по выбранным ранее ребрам, создается эскиз
 с окружностью и выполняется кинематическая операция (операция по траектории)
@@ -168,34 +175,6 @@ def get_lines_of_element(
             line = get_line_of_curve(curve, transform_function, wls)
             return [line]
 
-        # грань (создание сварных швов по всем ребрам-границам)
-        elif el.type == LDefin3D.o3d_face:
-            lines: list[Line] = []
-            face_def: KAPI5.ksFaceDefinition = el.GetDefinition()
-            ec: KAPI5.ksEdgeCollection = face_def.EdgeCollection()
-            for i in range(ec.GetCount()):
-                edge: KAPI5.ksEdgeDefinition = ec.GetByIndex(i)
-                curve: KAPI5.ksCurve3D = edge.GetCurve3D()
-
-                line = get_line_of_curve(curve, transform_function, wls)
-                lines.append(line)
-            return lines
-
-        # эскиз (создание сварных швов по всем линиям эскиза)
-        elif el.type == LDefin3D.o3d_sketch:
-            lines: list[Line] = []
-            parent_part = el.GetParent()
-
-            sketch7: KAPI7.ISketch = transfer_to_7(el, LDefin3D.o3d_sketch)
-            f: KAPI7.IFeature7 = KAPI7.IFeature7(sketch7)
-            edges: list[KAPI7.IEdge] = ensure_list(f.ModelObjects(LDefin3D.o3d_edge))
-            for edge in edges:
-                curve = transfer_to_K5(edge.MathCurve)
-                line = get_line_of_curve(curve, transform_function, wls)
-                lines.append(line)
-
-            return lines
-
         # ломаная 3D
         elif el.type == LDefin3D.o3d_polyline:
             line: Line = []
@@ -296,109 +275,24 @@ def construct_line(points: Line) -> Line:
     return line
 
 
-def create_weld(
-        part: KAPI7.IPart7,
+def is_point_on_line(
+        point: Point,
         line: Line,
-        wls: WeldLineSettings,
-        ) -> None:
+        do_check_between_points: bool = False,
+        max_deviation: float = 0.001,
+        ) -> bool:
     """
-    Создает твёрдое тело сварного шва в модели `part`.
+    Проверяет, содержит ли линия `line` точку `point`.
+
+    См. также `are_points_same()`, `create_welds()`.
     """
-    kompas5, kompas7 = get_kompas_objects()
-
-    # создание ломаной линии
-
-    agc = KAPI7.IAuxiliaryGeomContainer(part)
-    pl: KAPI7.IPolyLine = agc.PolyLines.Add()
-
-    # проверка линии шва на замкнутость
-    if are_points_same(line[0], line[-1], wls.diameter / 10):
-        pl.Closed = True
-        line = line[:-1]
-
-    for x, y, z in line:
-        cvp: KAPI7.ICurveVertexParam = pl.AddVertex(-1)
-        cvp.SetParamVertex(x, y, z, 0)
-        cvp.Update()
-
-    pl.Hidden = True
-    pl.Update()
-    pl.Name = RMWELD + " " + pl.Name
-    pl.Update()
-
-    # создание плоскости для эскиза
-    # (через первую точку ломаной перпендикулярно первому сегменту ломаной)
-
-    pl5: KAPI5.ksPolyLineDefinition = kompas5.TransferInterface(pl, 1, 0)
-
-    part5: KAPI5.ksPart = kompas5.TransferInterface(part, 1, 0)
-    plane5_entity: KAPI5.ksEntity = part5.NewEntity(LDefin3D.o3d_planePerpendicular)
-    plane5: KAPI5.ksPlanePerpendicularDefinition = plane5_entity.GetDefinition()
-    edge5: KAPI5.ksEdgeDefinition = pl5.EdgeCollection().First()
-    vertex5: KAPI5.ksEntity = pl5.GetPointParams(0).GetVertex()
-    plane5.SetEdge(edge5)
-    plane5.SetPoint(vertex5)
-    plane5_entity.hidden = True
-    plane5_entity.Update()
-    plane5_entity.name = RMWELD + " " + plane5_entity.name
-    plane5_entity.Update()
-    plane: KAPI7.IPlane3DPerpendicularByEdge = kompas5.TransferInterface(plane5_entity, 2, 0)
-
-    # создание эскиза с кругом --- сечением шва
-
-    mc = KAPI7.IModelContainer(part)
-    sketch: KAPI7.ISketch = mc.Sketchs.Add()
-    sketch.Plane = plane
-    sketch.Update()
-    sketch.Name = RMWELD + " " + sketch.Name
-    sketch.Update()
-
-    doc2d: KAPI7.IFragmentDocument = sketch.BeginEdit()
-    view: KAPI7.IView = doc2d.ViewsAndLayersManager.Views.View(0)
-    dc: KAPI7.IDrawingContainer = KAPI7.IDrawingContainer(view)
-    circle: KAPI7.ICircle = dc.Circles.Add()
-    circle.Radius = wls.diameter / 2
-    circle.Update()
-
-    sketch5 = kompas5.TransferInterface(sketch, 1, 0)
-    ref = sketch5.AddProjectionOf(vertex5)
-    dg: KAPI7.IDrawingGroup = kompas5.TransferReference(ref, 0)
-    point: KAPI7.IPoint = ensure_list(dg.Objects())[0]
-
-    do1 = KAPI7.IDrawingObject1(circle)
-    constraint: KAPI7.IParametriticConstraint = do1.NewConstraint()  # ограничение, в общем-то, необязательно
-    constraint.ConstraintType = 11  # ksCMergePoints
-    constraint.Index = 0
-    constraint.Partner = point
-    constraint.PartnerIndex = 0
-    constraint.Create()
-
-    sketch.EndEdit()
-
-    # создание кинематической операции (вытягивание по траектории)
-
-    evolution_e: KAPI5.ksEntity = part5.NewEntity(LDefin3D.o3d_bossEvolution)
-    base_evolution: KAPI5.ksBossEvolutionDefinition = evolution_e.GetDefinition()
-    base_evolution.SetSketch(sketch5)
-    base_evolution.ChooseBodies().ChooseBodiesType = 0  # новое тело
-    ec: KAPI5.ksEntityCollection = base_evolution.PathPartArray()
-    ec.Add(pl5)
-    evolution_e.Update()
-    evolution_e.name = RMWELD + " " + evolution_e.name
-    evolution_e.Update()
-
-    # переименование тела от операции вытягивания и задание слоя и цвета
-
-    bc: KAPI5.ksBodyCollection = evolution_e.BodyCollection()
-    for i in range(bc.GetCount()):
-        b5: KAPI5.ksBody = bc.GetByIndex(i)
-        b7: KAPI7.IBody7 = transfer_to_7(b5)
-        b7.Name = RMWELD + " " + b7.Name
-        if wls.layer != -1:
-            b7.LayerNumber = wls.layer
-        cp = KAPI7.IColorParam7(b7)
-        cp.UseColor = 3  # цвет слоя
-        b7.Update()
+    if do_check_between_points:
+        raise Exception("Not implemented")
+    else:
+        for line_point in line:
+            if are_points_same(point, line_point, max_deviation):
+                return True
+        return False
 
 
 def are_points_same(pointA: Point, pointB: Point, max_deviation: float) -> bool:
@@ -419,7 +313,7 @@ def calc_distance(pointA: Point, pointB: Point) -> float:
     return math.sqrt((pointA[0] - pointB[0]) ** 2 + (pointA[1] - pointB[1]) ** 2 + (pointA[2] - pointB[2]) ** 2)
 
 
-def merge_lines(lines: list[Line], max_deviation: float = 2) -> list[Line]:
+def merge_lines(lines: list[Line], max_deviation: float) -> list[Line]:
     """
     Объединяет линии, начальные и/или конечные точки которых совпадают.
 
@@ -476,81 +370,414 @@ def merge_lines(lines: list[Line], max_deviation: float = 2) -> list[Line]:
     return lines
 
 
-def create_welds(wls: WeldLineSettings) -> None:
+def remove_empty_lines(lines: list[Line]) -> list[Line]:
+    """
+    Удаляет из списка `lines` некорректные линии (которые содержат меньше двух точек).
+
+    Изменяет сам переденный список `lines`, не_создавая новый.
+    """
+    i = 0
+    while i < len(lines):
+        if len(lines[i]) < 2:
+            lines.pop(i)
+        else:
+            i += 1
+    return lines
+
+
+def extend_list_with_difference(base_list: list, new_list: list, key=lambda el: el) -> None:
+    """
+    Изменяет список `base_list` так, чтобы он образовывал симметричную разность
+    двух списков.
+    Аналог `set.symmetric_difference()`.
+
+    Добавляет в список `base_list` только те элементы из списка `new_list`, которых
+    нет в `base_list`. Если элемент из `new_list` уже есть в `base_list`, он
+    удаляется из `base_list`.
+    """
+
+    for new_el in new_list:
+        do_add = True
+        j = 0
+        while j < len(base_list):
+            base_el = base_list[j]
+            if key(new_el) == key(base_el):
+                base_list.pop(j)
+                do_add = False
+                break
+            j += 1
+        if do_add:
+            base_list.append(new_el)
+
+
+def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_only: bool = False) -> None:
     """
     Анализирует выбранные в текущей модели объекты.
-    Создает твердотельные модели сварных швов.
+    Формирует ломаные линии сварных швов.
+    Создает твердые тела сварных швов, если `do_create_polylines_only == False`.
     """
+    weldpart_path = weldpart_path.strip()
+    if weldpart_path != "":
+        weldpart_path = os.path.normpath(weldpart_path)
 
     # анализ выбранных объектов текущей модели
 
     doc5, toppart5 = open_part_K5()
-    selected = get_selected_K5(doc5)
+    selected_entities: list[KAPI5.ksEntity] = get_selected_K5(doc5, (KAPI5.ksEntity))
 
-    if len(selected) == 0:
+    if len(selected_entities) == 0:
         raise Exception("Не выбраны объекты для формирования сварных швов.")
 
+    selected_edge_objs = list(filter(
+        lambda e: e.type in (LDefin3D.o3d_edge, LDefin3D.o3d_polyline, 570),  # 570 - отрезок3D
+        selected_entities
+    ))
+    selected_vertex_objs = list(filter(
+        lambda e: e.type in (LDefin3D.o3d_vertex, LDefin3D.o3d_point3D),
+        selected_entities
+    ))
+    selected_multiedge_objs = list(filter(
+        lambda e: e.type in (LDefin3D.o3d_face, LDefin3D.o3d_sketch),
+        selected_entities
+    ))
+    print(f"выбранных точек:                  {len(selected_vertex_objs)}")
+    print(f"выбранных многореберных объектов: {len(selected_multiedge_objs)}")
+    print(f"выбранных реберных объектов:      {len(selected_edge_objs)}")
+
     lines: list[Line] = []
-    line_of_vertexes: Line = []
+    vertexes_points: list[Point] = []
 
-    for el in selected:
-        if isinstance(el, KAPI5.ksEntity):
-            tr_func = get_transform_function(toppart5, el.GetParent())
+    # получение координат выбранных точек
 
-            if el.type in (LDefin3D.o3d_vertex, LDefin3D.o3d_point3D):
-                p = get_point_of_element(el, tr_func)
-                if not p is None:
-                    line_of_vertexes.append(p)
+    for entity in selected_vertex_objs:
+        tr_func = get_transform_function(toppart5, entity.GetParent())
+        p: Point|None = get_point_of_element(entity, tr_func)
+        if not p is None:
+            vertexes_points.append(p)
 
-            else:
-                element_lines = get_lines_of_element(el, tr_func, wls)
-                lines.extend(element_lines)
-        else:
-            print("selected is not a ksEntity", el)
+    # формирование точек ломаных линий через точки, если выбраны только точки
 
-    # обработка отдельно выбранных точек
-    line_of_vertexes = construct_line(line_of_vertexes)
-    lines.append(line_of_vertexes)
+    if len(selected_multiedge_objs) == 0 and len(selected_vertex_objs) >= 2:
+        line_of_vertexes = construct_line(vertexes_points)
+        if len(line_of_vertexes) >= 2:
+            lines.append(line_of_vertexes)
+        print(f"Шов по отдельным точкам из {len(line_of_vertexes)} точек.")
 
-    # удаление пустых линий из списка
-    i = 0
-    while i < len(lines):
-        if len(lines[i]) <= 1:
-            lines.pop(i)
-        else:
-            i += 1
 
-    # склеивание стыкующихся линий в одну большую
-    merge_lines(lines, wls.diameter / 5)
+    # формирование точек ломаных линий через ребра граней и эскизов, содержащие выбранные точки
 
-    # создание прерывистых швов
-    pass  # TODO
+    if len(selected_multiedge_objs) > 0:
+        # определение ребер
+
+        edges_set: list[tuple[int, KAPI5.ksCurve3D, TransformFunction]] = []
+        faces_lines: list[Line] = []
+
+        for entity in selected_multiedge_objs:
+            entity_edges: list[tuple[int, KAPI5.ksCurve3D, TransformFunction]] = []
+            tr_func = get_transform_function(toppart5, entity.GetParent())
+
+            # грань (создание сварных швов по всем ребрам-границам)
+            if entity.type == LDefin3D.o3d_face:
+                lines: list[Line] = []
+                face_def: KAPI5.ksFaceDefinition = entity.GetDefinition()
+                ec: KAPI5.ksEdgeCollection = face_def.EdgeCollection()
+                for i in range(ec.GetCount()):
+                    edge5: KAPI5.ksEdgeDefinition = ec.GetByIndex(i)
+                    curve: KAPI5.ksCurve3D = edge5.GetCurve3D()
+                    edge7: KAPI7.IEdge = transfer_to_7(edge5)
+                    entity_edges.append((edge7.Reference, curve, tr_func))  # FIXME правильно ли захватывается переменная tr_func ? (выбрать одновременно из деталей с разными ЛСК)
+
+            # эскиз (создание сварных швов по всем линиям эскиза)
+            if entity.type == LDefin3D.o3d_sketch:
+                sketch7: KAPI7.ISketch = transfer_to_7(entity, LDefin3D.o3d_sketch)
+                feature: KAPI7.IFeature7 = KAPI7.IFeature7(sketch7)
+                edges: list[KAPI7.IEdge] = ensure_list(feature.ModelObjects(LDefin3D.o3d_edge))
+                for edge7 in edges:
+                    curve = transfer_to_K5(edge7.MathCurve)
+                    entity_edges.append((edge7.Reference, curve, tr_func))  # FIXME правильно ли захватывается переменная tr_func ? (выбрать одновременно из деталей с разными ЛСК)
+
+            # удаление общих ребер
+            extend_list_with_difference(edges_set, entity_edges, key=lambda el: el[0])
+
+        # формирование ломаных
+
+        for _, curve, tr_func in edges_set:
+            line = get_line_of_curve(curve, tr_func, wls)
+            faces_lines.append(line)
+
+        # склейка ломаных
+        remove_empty_lines(faces_lines)
+        merge_lines(faces_lines, wls.diameter / 5)
+
+        # если выбраны точки - удаление ломаных, не_содержащих точки
+        if len(selected_vertex_objs) > 0:
+            i = 0
+            while i < len(faces_lines):
+                line = faces_lines[i]
+                for point in vertexes_points:
+                    if is_point_on_line(point, line, False, wls.diameter / 100):
+                        i += 1
+                        break
+                else:
+                    faces_lines.pop(i)
+
+        print(f"Швов по многореберным объектам: {len(faces_lines)}")
+        lines.extend(faces_lines)
+
+    # формирование точек ломаных линий для отдельных ребер (независимо от выбранных точек)
+
+    if len(selected_edge_objs) > 0:
+        edges_lines: list[Line] = []
+
+        for entity in selected_edge_objs:
+            tr_func = get_transform_function(toppart5, entity.GetParent())
+            single_edge_lines = get_lines_of_element(entity, tr_func, wls)
+            edges_lines.extend(single_edge_lines)
+
+        remove_empty_lines(edges_lines)
+        merge_lines(edges_lines, wls.diameter / 5)
+
+        print(f"Швов по отдельным реберным объектам: {len(edges_lines)}")
+        lines.extend(edges_lines)
+
+    # конец формирования ломаных
 
     print(f"Всего непрерывных сварных швов: {len(lines)}")
 
     if len(lines) == 0:
         raise Exception("Не сформированы линии сварных швов.")
 
-    # создание твердых тел сварных швов
+    # создание прерывистых швов
 
-    welddoc, weldpart = open_part()
+    pass  # TODO
+
+    # создание ломаных линий швов в модели
+
+    welddoc, weldpart = open_part(weldpart_path)
 
     s_errors: str = ""
+    polylines7: list[KAPI7.IPolyLine] = []
 
     for line in lines:
         try:
-            create_weld(weldpart, line, wls)
+            pl7: KAPI7.IPolyLine = create_weld_polyline(weldpart, line, wls, do_hide = not do_create_polylines_only)
+            polylines7.append(pl7)
         except Exception as e:
             s_errors += traceback.format_exc() + "\n"
 
-    # welddoc.Save()
+    # создание твердых тел сварных швов
 
-    kompas5, kompas7 = get_kompas_objects()
-    kompas5.ksRefreshActiveWindow()
+    if not do_create_polylines_only:
+        if weldpart_path != "":
+            previous_doc_path = remember_opened_document()
+
+        for pl7 in polylines7:
+            pl5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7)
+            create_weld_body(weldpart, pl5, wls)
+
+        if weldpart_path != "":
+            welddoc.Save()
+            restore_opened_document(previous_doc_path)
+
+            kompas5, kompas7 = get_kompas_objects()
+            kompas5.ksRefreshActiveWindow()
 
     if s_errors != "":
         raise Exception(s_errors)
 
+
+def create_weld_polyline(
+        part: KAPI7.IPart7,
+        line: Line,
+        wls: WeldLineSettings,
+        do_hide: bool = False,
+        ) -> KAPI7.IPolyLine:
+    """
+    Создает ломаную линию в модели `part` по точкам `line`.
+    """
+    agc = KAPI7.IAuxiliaryGeomContainer(part)
+    pl: KAPI7.IPolyLine = agc.PolyLines.Add()
+
+    # проверка линии шва на замкнутость
+    if are_points_same(line[0], line[-1], wls.diameter / 10):
+        pl.Closed = True
+        line = line[:-1]
+
+    for x, y, z in line:
+        cvp: KAPI7.ICurveVertexParam = pl.AddVertex(-1)
+        cvp.SetParamVertex(x, y, z, 0)
+        cvp.Update()
+
+    pl.Update()
+    pl.Hidden = do_hide
+    pl.Name = RMWELD + " " + pl.Name
+    pl.Update()
+    print(f"Создана ломаная линия '{pl.Name}'")
+    return pl
+
+
+def create_weld_body(
+        part: KAPI7.IPart7,
+        polyline5: KAPI5.ksPolyLineDefinition,
+        wls: WeldLineSettings,
+        ) -> None:
+    """
+    Создает твердое тело сварного шва по ломаной `polyline5` в модели `part`.
+    """
+    assert isinstance(part, KAPI7.IPart7)
+    assert isinstance(polyline5, KAPI5.ksPolyLineDefinition)
+
+    kompas5, kompas7 = get_kompas_objects()
+
+    part5: KAPI5.ksPart = transfer_to_K5(part)
+
+    # создание плоскости для эскиза
+    # (через первую точку ломаной перпендикулярно первому сегменту ломаной)
+
+    plane5_entity: KAPI5.ksEntity = part5.NewEntity(LDefin3D.o3d_planePerpendicular)
+    plane5: KAPI5.ksPlanePerpendicularDefinition = plane5_entity.GetDefinition()
+    edge5: KAPI5.ksEdgeDefinition = polyline5.EdgeCollection().First()
+    vertex5: KAPI5.ksEntity = polyline5.GetPointParams(0).GetVertex()
+    plane5.SetEdge(edge5)
+    plane5.SetPoint(vertex5)
+    plane5_entity.hidden = True
+    plane5_entity.Update()
+    plane5_entity.name = RMWELD + " " + plane5_entity.name
+    plane5_entity.Update()
+    print(f"Создана плоскость '{plane5_entity.name}'")
+    plane: KAPI7.IPlane3DPerpendicularByEdge = transfer_to_7(plane5_entity)
+
+    # создание эскиза с кругом --- сечением шва
+
+    mc = KAPI7.IModelContainer(part)
+    sketch: KAPI7.ISketch = mc.Sketchs.Add()
+    sketch.Plane = plane
+    sketch.Update()
+    sketch.Name = RMWELD + " " + sketch.Name
+    print(f"Создан эскиз '{sketch.Name}'")
+    sketch.Update()
+
+    doc2d: KAPI7.IFragmentDocument = sketch.BeginEdit()
+    view: KAPI7.IView = doc2d.ViewsAndLayersManager.Views.View(0)
+    dc: KAPI7.IDrawingContainer = KAPI7.IDrawingContainer(view)
+    circle: KAPI7.ICircle = dc.Circles.Add()
+    circle.Radius = wls.diameter / 2
+    circle.Update()
+
+    sketch5 = transfer_to_K5(sketch)
+    ref = sketch5.AddProjectionOf(vertex5)
+    dg: KAPI7.IDrawingGroup = kompas5.TransferReference(ref, 0)
+    point: KAPI7.IPoint = ensure_list(dg.Objects())[0]
+
+    do1 = KAPI7.IDrawingObject1(circle)
+    constraint: KAPI7.IParametriticConstraint = do1.NewConstraint()  # ограничение, в общем-то, необязательно
+    constraint.ConstraintType = 11  # ksCMergePoints
+    constraint.Index = 0
+    constraint.Partner = point
+    constraint.PartnerIndex = 0
+    constraint.Create()
+
+    sketch.EndEdit()
+    print(f"Завершено редактирование эскиза '{sketch.Name}'")
+
+    # создание кинематической операции (вытягивание по траектории)
+
+    evolution_e: KAPI5.ksEntity = part5.NewEntity(LDefin3D.o3d_bossEvolution)
+    base_evolution: KAPI5.ksBossEvolutionDefinition = evolution_e.GetDefinition()
+    base_evolution.SetSketch(sketch5)
+    base_evolution.ChooseBodies().ChooseBodiesType = 0  # новое тело
+    ec: KAPI5.ksEntityCollection = base_evolution.PathPartArray()
+    ec.Add(polyline5)
+    evolution_e.Update()
+    evolution_e.name = RMWELD + " " + evolution_e.name
+    print(f"Создано вытягивание по траектории '{evolution_e.name}'")
+    evolution_e.Update()
+
+    # переименование тела от операции вытягивания и задание слоя и цвета
+
+    bc: KAPI5.ksBodyCollection = evolution_e.BodyCollection()
+    for i in range(bc.GetCount()):
+        b5: KAPI5.ksBody = bc.GetByIndex(i)
+        b7: KAPI7.IBody7 = transfer_to_7(b5)
+        b7.Name = RMWELD + " " + b7.Name
+        if wls.layer != -1:
+            b7.LayerNumber = wls.layer
+        cp = KAPI7.IColorParam7(b7)
+        cp.UseColor = 3  # цвет слоя
+        b7.Update()
+        print(f"Тело шва '{b7.Name}'на слое {b7.LayerNumber} переименовано.")
+
+
+def find_weld_polylines_without_bodies(
+        part: KAPI7.IPart7,
+        ) -> list[KAPI7.IPolyLine]:
+    """
+    Возвращает ломаные линии сварных швов, по которым не созданы твердые тела швов.
+
+    Признаки этих ломаных линий:
+    * имеют особое наименование,
+    * не_имеют дочерних операций вытягивания по траектории.
+    """
+    polylines: list[KAPI7.IPolyLine] = []
+
+    agc = KAPI7.IAuxiliaryGeomContainer(part)
+    pls: KAPI7.IPolyLines = agc.PolyLines
+
+    for i in range(pls.Count):
+        pl: KAPI7.IPolyLine = pls.Item(i)
+        if pl.Name.startswith(RMWELD):
+            mo1 = KAPI7.IModelObject1(pl)
+            children: list[KAPI7.IModelObject] = ensure_list(mo1.Childrens(1))  # 1 - все отношения (ksRelationTypeEnum)
+            for mo in children:
+                if mo.Name.startswith(RMWELD) and mo.Type == 11276:  # 11276 - элемент по траектории
+                    break
+            else:
+                polylines.append(pl)
+
+    return polylines
+
+def find_and_create_weld_bodies(
+        weldpart_path: str,
+        wls: WeldLineSettings,
+        do_hide_polylines: bool = False,
+        ) -> None:
+    """
+    Находит в модели ломаные линии сварных швов с несозданными твердыми телами,
+    и создает твердые тела швов по этим линиям.
+
+    См. также `find_weld_polylines_without_bodies()`.
+    """
+    if weldpart_path != "":
+        previous_doc_path = remember_opened_document()
+
+    doc, toppart = open_part(weldpart_path)
+    polylines7 = find_weld_polylines_without_bodies(toppart)
+
+    print(f"Найдено {len(polylines7)} ломаных линий без твердотельных построений: {[pl.Name for pl in polylines7]}")
+
+    errors = ""
+
+    for pl7 in polylines7:
+        try:
+            pl5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7)
+            create_weld_body(toppart, pl5, wls)
+            if do_hide_polylines:
+                pl7.Hidden = True
+                pl7.Update()
+        except Exception as e:
+            errors += traceback.format_exc() + "\n"
+
+    print("Создание твердых тел завершено.")
+
+    if weldpart_path != "":
+        welddoc.Save()
+        restore_opened_document(previous_doc_path)
+
+        kompas5, kompas7 = get_kompas_objects()
+        kompas5.ksRefreshActiveWindow()
+
+    if errors != "":
+        raise Exception(errors)
 
 
 class WeldingMacros(Macros):
@@ -611,7 +838,7 @@ class WeldingMacros(Macros):
         def _create_welds_kompas():
             wls = WeldLineSettings(10.0, 20.0)  # FIXME брать из config
             # wls.layer = -1  # FIXME брать из config
-            create_welds(wls)
+            create_welds(self._welddoc_path, wls)
 
         self.execute(_create_welds_kompas)
 
@@ -636,5 +863,17 @@ if __name__ == "__main__":
 
     wls = WeldLineSettings()
     wls.layer = -1
-    create_welds(wls)
+
+    weldpart_path = ""
+
+
+    action = 0b11
+
+    if action & 0b01:
+        create_welds(weldpart_path, wls, True)
+
+    if action & 0b10:
+        find_and_create_weld_bodies(weldpart_path, wls, True)
+
+
 
