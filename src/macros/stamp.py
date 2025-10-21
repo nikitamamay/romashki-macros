@@ -460,8 +460,7 @@ class MacrosStamp(Macros):
 
     def fill_stamp_template(self) -> None:
         def _fill_stamp_template():
-            i: int = self._config["current_template"]
-            t_name, t_data = self._config["templates"][i]
+            t_name, t_data = self._get_current_template()
 
             stamp_data = {}
             for key in t_data:
@@ -469,6 +468,13 @@ class MacrosStamp(Macros):
 
             stamp(stamp_data)
         self.execute(_fill_stamp_template)
+
+    def _get_current_template(self):
+        if len(self._config["templates"]) == 0:
+            raise Exception("Нет ни одного шаблона основной надписи")
+        if not (0 <= self._config["current_template"] < len(self._config["templates"])):
+            raise Exception(f"Некорректный индекс выбранного шаблона: {self._config["current_template"]}")
+        return self._config["templates"][self._config["current_template"]]
 
 
 if __name__ == "__main__":
