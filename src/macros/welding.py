@@ -71,20 +71,23 @@ class WeldLineSettings:
     """
     Класс настроек алгоритма создания ломаных линий сварных швов.
     """
-    def __init__(self, diameter: float = 10.0, max_angle_deviation: float = 20.0):
+    def __init__(self, diameter: float = 10.0, layer: int = -1):
         self.diameter: float = diameter
         """диаметр валика твердого тела шва"""
 
-        self.step_default: float = diameter * 1.6
+        self.step_default: float = diameter * 3
         """длина шага вдоль кривой по-умолчанию"""
 
-        self.step_min: float = diameter / 2
+        self.step_min: float = diameter * 0.75
         """минимальная длина шага вдоль кривой"""
 
-        self.max_angle_deviation: float = max_angle_deviation  # в градусах
-        """максимальный угол сектора при аппроксимации окружностей"""
+        self.max_angle_deviation: float = 45.0  # в градусах
+        """максимальный угол сектора при аппроксимации окружностей, в градусах"""
 
-        self.layer: int = -1
+        self.merge_distance: float = diameter * 0.2
+        """расстояние между двумя точками, которые следует объединять"""
+
+        self.layer: int = layer
         """номер слоя, на который переносятся объекты построения тел швов. Если -1, то не менять слой"""
 
 
@@ -139,9 +142,9 @@ def get_line_of_curve(
                 r = curve.GetCurveParam().minorRadius
             else:
                 r = curve.GetCurveParam().radius
-            step_max = 2 * r * math.sin(math.radians(wls.max_angle_deviation))
-            # step_recommended = min(step_max, step_default)
+            step_max = 2 * r * math.sin(math.radians(wls.max_angle_deviation / 2))
             step_recommended = max(step_max, wls.step_min)
+            step_recommended = min(step_max, wls.step_default)
         else:
             step_recommended = wls.step_default
         segments_count = max(1, math.ceil(curve_length / step_recommended))
@@ -410,7 +413,12 @@ def extend_list_with_difference(base_list: list, new_list: list, key=lambda el: 
             base_list.append(new_el)
 
 
-def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_only: bool = False) -> None:
+def create_welds(
+        weldpart_path: str,
+        wls: WeldLineSettings,
+        do_create_polylines_only: bool = False,
+        prefix: str = RMWELD,
+        ) -> None:
     """
     Анализирует выбранные в текущей модели объекты.
     Формирует ломаные линии сварных швов.
@@ -507,7 +515,7 @@ def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_
 
         # склейка ломаных
         remove_empty_lines(faces_lines)
-        merge_lines(faces_lines, wls.diameter / 5)
+        merge_lines(faces_lines, wls.merge_distance)
 
         # если выбраны точки - удаление ломаных, не_содержащих точки
         if len(selected_vertex_objs) > 0:
@@ -535,10 +543,15 @@ def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_
             edges_lines.extend(single_edge_lines)
 
         remove_empty_lines(edges_lines)
-        merge_lines(edges_lines, wls.diameter / 5)
+        merge_lines(edges_lines, wls.merge_distance)
 
         print(f"Швов по отдельным реберным объектам: {len(edges_lines)}")
         lines.extend(edges_lines)
+
+    # склейка линий швов, полученных разными методами (например, выделены ребра + несколько точек)
+
+    remove_empty_lines(lines)
+    merge_lines(lines, wls.merge_distance)
 
     # конец формирования ломаных
 
@@ -553,6 +566,9 @@ def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_
 
     # создание ломаных линий швов в модели
 
+    if weldpart_path != "":
+        previous_doc_path = remember_opened_document()
+
     welddoc, weldpart = open_part(weldpart_path)
 
     s_errors: str = ""
@@ -560,7 +576,7 @@ def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_
 
     for line in lines:
         try:
-            pl7: KAPI7.IPolyLine = create_weld_polyline(weldpart, line, wls, do_hide = not do_create_polylines_only)
+            pl7: KAPI7.IPolyLine = create_weld_polyline(weldpart, line, wls, not do_create_polylines_only, prefix)
             polylines7.append(pl7)
         except Exception as e:
             s_errors += traceback.format_exc() + "\n"
@@ -568,19 +584,17 @@ def create_welds(weldpart_path: str, wls: WeldLineSettings, do_create_polylines_
     # создание твердых тел сварных швов
 
     if not do_create_polylines_only:
-        if weldpart_path != "":
-            previous_doc_path = remember_opened_document()
-
         for pl7 in polylines7:
             pl5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7)
-            create_weld_body(weldpart, pl5, wls)
+            create_weld_body(weldpart, pl5, wls, prefix)
 
         if weldpart_path != "":
             welddoc.Save()
-            restore_opened_document(previous_doc_path)
 
-            kompas5, kompas7 = get_kompas_objects()
-            kompas5.ksRefreshActiveWindow()
+    if weldpart_path != "":
+        restore_opened_document(previous_doc_path)
+        kompas5, kompas7 = get_kompas_objects()
+        kompas5.ksRefreshActiveWindow()
 
     if s_errors != "":
         raise Exception(s_errors)
@@ -591,6 +605,7 @@ def create_weld_polyline(
         line: Line,
         wls: WeldLineSettings,
         do_hide: bool = False,
+        prefix: str = RMWELD,
         ) -> KAPI7.IPolyLine:
     """
     Создает ломаную линию в модели `part` по точкам `line`.
@@ -599,7 +614,7 @@ def create_weld_polyline(
     pl: KAPI7.IPolyLine = agc.PolyLines.Add()
 
     # проверка линии шва на замкнутость
-    if are_points_same(line[0], line[-1], wls.diameter / 10):
+    if are_points_same(line[0], line[-1], wls.merge_distance):
         pl.Closed = True
         line = line[:-1]
 
@@ -610,9 +625,12 @@ def create_weld_polyline(
 
     pl.Update()
     pl.Hidden = do_hide
-    pl.Name = RMWELD + " " + pl.Name
+    pl.Name = (prefix + " " + pl.Name).strip()
+    # mo1 = KAPI7.IModelObject1(pl)
+    # if wls.layer != -1:
+    #     mo1.LayerNumber = wls.layer
     pl.Update()
-    print(f"Создана ломаная линия '{pl.Name}'")
+    print(f"Создана ломаная линия '{pl.Name}'")  # на слое {mo1.LayerNumber}")
     return pl
 
 
@@ -620,6 +638,7 @@ def create_weld_body(
         part: KAPI7.IPart7,
         polyline5: KAPI5.ksPolyLineDefinition,
         wls: WeldLineSettings,
+        prefix: str = RMWELD,
         ) -> None:
     """
     Создает твердое тело сварного шва по ломаной `polyline5` в модели `part`.
@@ -642,7 +661,7 @@ def create_weld_body(
     plane5.SetPoint(vertex5)
     plane5_entity.hidden = True
     plane5_entity.Update()
-    plane5_entity.name = RMWELD + " " + plane5_entity.name
+    plane5_entity.name = (prefix + " " + plane5_entity.name).strip()
     plane5_entity.Update()
     print(f"Создана плоскость '{plane5_entity.name}'")
     plane: KAPI7.IPlane3DPerpendicularByEdge = transfer_to_7(plane5_entity)
@@ -653,7 +672,7 @@ def create_weld_body(
     sketch: KAPI7.ISketch = mc.Sketchs.Add()
     sketch.Plane = plane
     sketch.Update()
-    sketch.Name = RMWELD + " " + sketch.Name
+    sketch.Name = (prefix + " " + sketch.Name).strip()
     print(f"Создан эскиз '{sketch.Name}'")
     sketch.Update()
 
@@ -689,7 +708,7 @@ def create_weld_body(
     ec: KAPI5.ksEntityCollection = base_evolution.PathPartArray()
     ec.Add(polyline5)
     evolution_e.Update()
-    evolution_e.name = RMWELD + " " + evolution_e.name
+    evolution_e.name = (prefix + " " + evolution_e.name).strip()
     print(f"Создано вытягивание по траектории '{evolution_e.name}'")
     evolution_e.Update()
 
@@ -699,17 +718,18 @@ def create_weld_body(
     for i in range(bc.GetCount()):
         b5: KAPI5.ksBody = bc.GetByIndex(i)
         b7: KAPI7.IBody7 = transfer_to_7(b5)
-        b7.Name = RMWELD + " " + b7.Name
+        b7.Name = (prefix + " " + b7.Name).strip()
         if wls.layer != -1:
             b7.LayerNumber = wls.layer
         cp = KAPI7.IColorParam7(b7)
         cp.UseColor = 3  # цвет слоя
         b7.Update()
-        print(f"Тело шва '{b7.Name}'на слое {b7.LayerNumber} переименовано.")
+        print(f"Переименовано тело шва '{b7.Name}' на слое {b7.LayerNumber}.")
 
 
 def find_weld_polylines_without_bodies(
         part: KAPI7.IPart7,
+        prefix: str = RMWELD,
         ) -> list[KAPI7.IPolyLine]:
     """
     Возвращает ломаные линии сварных швов, по которым не созданы твердые тела швов.
@@ -725,11 +745,11 @@ def find_weld_polylines_without_bodies(
 
     for i in range(pls.Count):
         pl: KAPI7.IPolyLine = pls.Item(i)
-        if pl.Name.startswith(RMWELD):
+        if pl.Name.startswith(prefix):
             mo1 = KAPI7.IModelObject1(pl)
             children: list[KAPI7.IModelObject] = ensure_list(mo1.Childrens(1))  # 1 - все отношения (ksRelationTypeEnum)
             for mo in children:
-                if mo.Name.startswith(RMWELD) and mo.Type == 11276:  # 11276 - элемент по траектории
+                if mo.Name.startswith(prefix) and mo.Type == 11276:  # 11276 - элемент по траектории
                     break
             else:
                 polylines.append(pl)
@@ -740,6 +760,7 @@ def find_and_create_weld_bodies(
         weldpart_path: str,
         wls: WeldLineSettings,
         do_hide_polylines: bool = False,
+        prefix: str = RMWELD,
         ) -> None:
     """
     Находит в модели ломаные линии сварных швов с несозданными твердыми телами,
@@ -751,7 +772,7 @@ def find_and_create_weld_bodies(
         previous_doc_path = remember_opened_document()
 
     doc, toppart = open_part(weldpart_path)
-    polylines7 = find_weld_polylines_without_bodies(toppart)
+    polylines7 = find_weld_polylines_without_bodies(toppart, prefix)
 
     print(f"Найдено {len(polylines7)} ломаных линий без твердотельных построений: {[pl.Name for pl in polylines7]}")
 
@@ -760,7 +781,7 @@ def find_and_create_weld_bodies(
     for pl7 in polylines7:
         try:
             pl5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7)
-            create_weld_body(toppart, pl5, wls)
+            create_weld_body(toppart, pl5, wls, prefix)
             if do_hide_polylines:
                 pl7.Hidden = True
                 pl7.Update()
@@ -780,7 +801,43 @@ def find_and_create_weld_bodies(
         raise Exception(errors)
 
 
+class WeldSpecInputWidget(QtWidgets.QWidget):
+    data_edited = QtCore.pyqtSignal()
+
+    def __init__(self, parent = None):
+        super().__init__(parent)
+
+        self._sb_diameter = gui_widgets.SpinBox()
+        self._sb_diameter.setPrefix("⌀")
+        self._sb_diameter.valueChanged.connect(lambda: self.data_edited.emit())
+
+        self._sb_layer = QtWidgets.QSpinBox()
+        self._sb_layer.setRange(-1, 10**9)
+        self._sb_layer.setSingleStep(1)
+        self._sb_layer.valueChanged.connect(lambda: self.data_edited.emit())
+
+        self._layout = QtWidgets.QGridLayout()
+        self._layout.addWidget(QtWidgets.QLabel("Диаметр условного валика шва"), 0, 0, 1, 1)
+        self._layout.addWidget(self._sb_diameter, 0, 1, 1, 1)
+        self._layout.addWidget(QtWidgets.QLabel("Слой для твёрдых тел шва\n(укажите -1 для использования активного слоя)"), 1, 0, 1, 1)
+        self._layout.addWidget(self._sb_layer, 1, 1, 1, 1)
+        self.setLayout(self._layout)
+
+    def set_data(self, diameter: float, layer: int) -> None:
+        self._sb_diameter.setValue(diameter)
+        self._sb_layer.setValue(layer)
+
+    def get_data(self) -> tuple[float, int]:
+        return self._sb_diameter.value(), self._sb_layer.value()
+
+    def clear(self) -> None:
+        self.set_data(10.0, -1)
+
+
 class WeldingMacros(Macros):
+    DATAROLE_DIAMETER = 101
+    DATAROLE_LAYER = 102
+
     def __init__(self) -> None:
         super().__init__(
             "welding",
@@ -788,59 +845,205 @@ class WeldingMacros(Macros):
         )
 
         self._welddoc_path = ""
-        self._layer_number = 1
 
+    def check_config(self) -> None:
+        try:
+            assert isinstance(self._config["prefix"], str)
+        except:
+            self._config["prefix"] = RMWELD
+            config.save_delayed()
+
+        try:
+            assert isinstance(self._config["do_create_in_active_document"], bool)
+        except:
+            self._config["do_create_in_active_document"] = True
+            config.save_delayed()
+
+        try:
+            assert isinstance(self._config["weld_specs"], list)
+            assert len(self._config["weld_specs"]) > 0
+            for spec in self._config["weld_specs"]:
+                assert isinstance(spec, list)
+                assert len(spec) == 3
+                assert isinstance(spec[0], str)
+                assert isinstance(spec[1], (float, int))
+                assert isinstance(spec[2], int)
+        except:
+            self._config["weld_specs"] = [
+                ["◺5", 10.0, -1],
+            ]
+            config.save_delayed()
+
+        try:
+            assert isinstance(self._config["active_weld_spec"], int)
+            assert 0 <= self._config["active_weld_spec"] < len(self._config["weld_specs"])
+        except:
+            self._config["active_weld_spec"] = 0
+            config.save_delayed()
+
+    def settings_widget(self) -> QtWidgets.QWidget:
+        def _apply_changes() -> None:
+            self._config["prefix"] = le_prefix.text()
+            self._config["do_create_in_active_document"] = cb_use_active_model.isChecked()
+            config.save_delayed()
+
+        def _apply_list_changes() -> None:
+            self._config["weld_specs"].clear()
+            for item in weld_specs_list.iterate_items():
+                name: str = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
+                diameter: float = item.data(self.DATAROLE_DIAMETER)
+                layer: int = item.data(self.DATAROLE_LAYER)
+                self._config["weld_specs"].append([name, diameter, layer])
+
+            config.save_delayed()
+
+        def _set_item_data(item: QtGui.QStandardItem, name: str, diam: float, layer: int) -> None:
+            item.setData(name, QtCore.Qt.ItemDataRole.DisplayRole)
+            item.setData(diam, self.DATAROLE_DIAMETER)
+            item.setData(layer, self.DATAROLE_LAYER)
+
+        def _create_new_weld_spec() -> QtGui.QStandardItem:
+            item = QtGui.QStandardItem()
+            _set_item_data(item, "◺5", 10.0, -1)
+            return item
+
+        def _weld_spec_data_changed() -> None:
+            diam, layer = wsip.get_data()
+            item = weld_specs_list.get_one_selected_item()
+            if not item is None:
+                name = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
+                _set_item_data(item, name, diam, layer)
+                _apply_list_changes()
+
+        def _selection_changed() -> None:
+            item = weld_specs_list.get_one_selected_item()
+            if not item is None:
+                wsip.setEnabled(True)
+                diam = item.data(self.DATAROLE_DIAMETER)
+                layer = item.data(self.DATAROLE_LAYER)
+                wsip.set_data(diam, layer)
+            else:
+                wsip.clear()
+                wsip.setEnabled(False)
+
+        w = QtWidgets.QWidget()
+        l = QtWidgets.QGridLayout()
+        l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        w.setLayout(l)
+
+        cb_use_active_model = QtWidgets.QCheckBox("Создавать построения в активной модели, а не во вспомогательной")
+        cb_use_active_model.setChecked(self._config["do_create_in_active_document"])
+        cb_use_active_model.stateChanged.connect(_apply_changes)
+
+        le_prefix = QtWidgets.QLineEdit(self._config["prefix"])
+        le_prefix.setPlaceholderText(RMWELD)
+        le_prefix.textChanged.connect(_apply_changes)
+
+        weld_specs_list = gui_widgets.StringListSelector(_create_new_weld_spec)
+        for m in self._config["weld_specs"]:
+            name, diam, layer = m
+            item = QtGui.QStandardItem()
+            _set_item_data(item, name, diam, layer)
+            weld_specs_list.add_new_item(item)
+
+        wsip = WeldSpecInputWidget()
+
+        l.addWidget(cb_use_active_model, 0, 0, 1, 2)
+        l.addWidget(QtWidgets.QLabel("Префикс для наименований построений и тел"), 1, 0, 1, 1)
+        l.addWidget(le_prefix, 1, 1, 1, 1)
+        l.addWidget(weld_specs_list, 2, 0, 1, 2)
+        l.addWidget(wsip, 3, 0, 1, 2)
+
+        wsip.data_edited.connect(_weld_spec_data_changed)
+        weld_specs_list.selection_changed.connect(_selection_changed)
+        weld_specs_list.list_changed.connect(lambda: self.toolbar_update_requested.emit(False))
+        weld_specs_list.list_changed.connect(lambda: _apply_list_changes())
+
+        weld_specs_list.clear_selection()
+
+        return w
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        btn_create_weld = gui_widgets.ButtonWithList(QtGui.QIcon(get_resource_path("img/macros/weld.svg")), "")
-        btn_create_weld.clicked.connect(self._create_welds)
-        btn_create_weld.setToolTip("Создать тела сварных швов\nпо выбранным объектам модели")
+        def _select_active_weld_spec() -> None:
+            i = cmbx_weld_specs.currentIndex()
+            if i >= len(self._config["weld_specs"]):
+                self.request_settings()
+                if i > 0:
+                    cmbx_weld_specs.setCurrentIndex(0)
+            else:
+                self._config["active_weld_spec"] = i
+                config.save_delayed()
 
-        # for i, m in enumerate(self._config["rvd_sizes"]):
-        #     D, d = m
-        #     name = f"⌀{d} / ⌀{D}"
-        #     btn_create_weld._menu.addAction(name, (lambda i: lambda: _apply_size(i))(i))
+        cmbx_weld_specs = QtWidgets.QComboBox()
 
-        btn_create_weld._menu.addSeparator()
+        for t in self._config["weld_specs"]:
+            name, diam, layer = t
+            cmbx_weld_specs.addItem(name)
+        cmbx_weld_specs.addItem(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настроить...")
+        cmbx_weld_specs.setIconSize(QtCore.QSize(16, 16))
 
-        btn_create_weld._menu.addAction(
-            os.path.basename(self._welddoc_path) if self._welddoc_path != "" else "<не указана модель сварных швов>"
-        )
+        if self._config["active_weld_spec"] < cmbx_weld_specs.count():
+            cmbx_weld_specs.setCurrentIndex(self._config["active_weld_spec"])
+        cmbx_weld_specs.setToolTip("Выбор параметров сварного шва")
+        cmbx_weld_specs.currentIndexChanged.connect(_select_active_weld_spec)
 
-        btn_create_weld._menu.addSeparator()
+        btn_create_weld = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/weld.svg")), "")
+        btn_create_weld.clicked.connect(lambda: self.execute(self._create_welds))
+        btn_create_weld.setToolTip("Создать сварные швы\n(ломаные линии и твердые тела)\nпо выбранным объектам модели")
 
-        btn_create_weld._menu.addAction(
-            QtGui.QIcon(get_resource_path("img/macros/doc_model.svg")),
-            "Сменить модель сварных швов...",
-            self._change_welddoc_path,
-        )
+        btn_create_lines = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/weld_lines.svg")), "")
+        btn_create_lines.clicked.connect(lambda: self.execute(self._create_welds_lines))
+        btn_create_lines.setToolTip("Создать только ломаные линии сварных швов\nпо выбранным объектам модели")
 
-        btn_create_weld._menu.addAction(
-            QtGui.QIcon(get_resource_path("img/settings.svg")),
-            "Настроить...",
-            self.request_settings,
-        )
+        btn_create_bodies = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/weld_bodies.svg")), "")
+        btn_create_bodies.clicked.connect(lambda: self.execute(self._create_welds_bodies))
+        btn_create_bodies.setToolTip("Создать твёрдые тела сварных швов\nпо ломаным линиям без тел")
 
         return {
+            "селектор выбора параметров сварного шва": cmbx_weld_specs,
             "кнопка создания сварных швов": btn_create_weld,
+            "кнопка создания ломаных линий швов": btn_create_lines,
+            "кнопка создания твердых тел швов": btn_create_bodies,
         }
 
+    def _check_for_weldpart(self) -> bool:
+        if self._config["do_create_in_active_document"]:
+            self._welddoc_path = ""
+        else:
+            if self._welddoc_path == "":
+                self._change_welddoc_path()
+            if self._welddoc_path == "":
+                self.show_warning(
+                    "<p>Не указан путь к модели сварных швов.<br>Укажите путь и запустите команду заново.</p>"
+                    "<p>Или создавайте сварные швы в текущей модели с использованием опции \"Создавать построения в активной модели, а не во вспомогательной\".</p>"
+                )
+                self.request_settings()
+                return False
+        return True
+
     def _create_welds(self) -> None:
-        if self._welddoc_path == "":
-            self._change_welddoc_path()
-        if self._welddoc_path == "":
-            self.show_warning(
-                "<p>Не указан путь к модели сварных швов.</p>"
-                "<p>Укажите путь и запустите команду заново.</p>"
-            )
-            return
+        if not self._check_for_weldpart(): return
+        active_spec = self._get_active_spec()
+        name, diameter, layer = active_spec
 
-        def _create_welds_kompas():
-            wls = WeldLineSettings(10.0, 20.0)  # FIXME брать из config
-            # wls.layer = -1  # FIXME брать из config
-            create_welds(self._welddoc_path, wls)
+        wls = WeldLineSettings(diameter, layer)
+        create_welds(self._welddoc_path, wls, False, self._config["prefix"])
 
-        self.execute(_create_welds_kompas)
+    def _create_welds_lines(self) -> None:
+        if not self._check_for_weldpart(): return
+        active_spec = self._get_active_spec()
+        name, diameter, layer = active_spec
+
+        wls = WeldLineSettings(diameter, layer)
+        create_welds(self._welddoc_path, wls, True, self._config["prefix"])
+
+    def _create_welds_bodies(self) -> None:
+        if not self._check_for_weldpart(): return
+        active_spec = self._get_active_spec()
+        name, diameter, layer = active_spec
+
+        wls = WeldLineSettings(diameter, layer)
+        find_and_create_weld_bodies(self._welddoc_path, wls, True, self._config["prefix"])
 
     def _change_welddoc_path(self) -> None:
         try:
@@ -856,7 +1059,14 @@ class WeldingMacros(Macros):
             gui_widgets.EXT_ASSEMBLY,
         )
         self._welddoc_path = path
-        self.toolbar_update_requested.emit(True)
+
+    def _get_active_spec(self):
+        if len(self._config["weld_specs"]) == 0:
+            self.request_settings()
+            raise Exception("Нет ни одного шаблона сварных швов")
+        if not (0 <= self._config["active_weld_spec"] < len(self._config["weld_specs"])):
+            raise Exception(f"Некорректный индекс выбранного шаблона сварного шва: {self._config["active_weld_spec"]}")
+        return self._config["weld_specs"][self._config["active_weld_spec"]]
 
 
 if __name__ == "__main__":
@@ -870,10 +1080,10 @@ if __name__ == "__main__":
     action = 0b11
 
     if action & 0b01:
-        create_welds(weldpart_path, wls, True)
+        create_welds(weldpart_path, wls, True, RMWELD)
 
     if action & 0b10:
-        find_and_create_weld_bodies(weldpart_path, wls, True)
+        find_and_create_weld_bodies(weldpart_path, wls, True, RMWELD)
 
 
 
