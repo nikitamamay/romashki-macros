@@ -53,6 +53,8 @@ import math
 import traceback
 
 
+RMWELD = "RMWeld"
+
 Point: typing.TypeAlias = tuple[float, float, float]
 Line: typing.TypeAlias = list[Point]
 TransformFunction: typing.TypeAlias = typing.Callable[[Point], Point]
@@ -74,6 +76,9 @@ class WeldLineSettings:
 
         self.max_angle_deviation: float = max_angle_deviation  # в градусах
         """максимальный угол сектора при аппроксимации окружностей"""
+
+        self.layer: int = -1
+        """номер слоя, на который переносятся объекты построения тел швов. Если -1, то не менять слой"""
 
 
 def get_transform_function(toppart5: KAPI5.ksPart, element_part: KAPI5.ksPart) -> TransformFunction:
@@ -291,7 +296,11 @@ def construct_line(points: Line) -> Line:
     return line
 
 
-def create_weld(part: KAPI7.IPart7, line: Line, diameter: float = 10) -> None:
+def create_weld(
+        part: KAPI7.IPart7,
+        line: Line,
+        wls: WeldLineSettings,
+        ) -> None:
     """
     Создает твёрдое тело сварного шва в модели `part`.
     """
@@ -303,7 +312,7 @@ def create_weld(part: KAPI7.IPart7, line: Line, diameter: float = 10) -> None:
     pl: KAPI7.IPolyLine = agc.PolyLines.Add()
 
     # проверка линии шва на замкнутость
-    if are_points_same(line[0], line[-1], diameter / 10):
+    if are_points_same(line[0], line[-1], wls.diameter / 10):
         pl.Closed = True
         line = line[:-1]
 
@@ -313,6 +322,8 @@ def create_weld(part: KAPI7.IPart7, line: Line, diameter: float = 10) -> None:
         cvp.Update()
 
     pl.Hidden = True
+    pl.Update()
+    pl.Name = RMWELD + " " + pl.Name
     pl.Update()
 
     # создание плоскости для эскиза
@@ -329,6 +340,8 @@ def create_weld(part: KAPI7.IPart7, line: Line, diameter: float = 10) -> None:
     plane5.SetPoint(vertex5)
     plane5_entity.hidden = True
     plane5_entity.Update()
+    plane5_entity.name = RMWELD + " " + plane5_entity.name
+    plane5_entity.Update()
     plane: KAPI7.IPlane3DPerpendicularByEdge = kompas5.TransferInterface(plane5_entity, 2, 0)
 
     # создание эскиза с кругом --- сечением шва
@@ -337,12 +350,14 @@ def create_weld(part: KAPI7.IPart7, line: Line, diameter: float = 10) -> None:
     sketch: KAPI7.ISketch = mc.Sketchs.Add()
     sketch.Plane = plane
     sketch.Update()
+    sketch.Name = RMWELD + " " + sketch.Name
+    sketch.Update()
 
     doc2d: KAPI7.IFragmentDocument = sketch.BeginEdit()
     view: KAPI7.IView = doc2d.ViewsAndLayersManager.Views.View(0)
     dc: KAPI7.IDrawingContainer = KAPI7.IDrawingContainer(view)
     circle: KAPI7.ICircle = dc.Circles.Add()
-    circle.Radius = diameter / 2
+    circle.Radius = wls.diameter / 2
     circle.Update()
 
     sketch5 = kompas5.TransferInterface(sketch, 1, 0)
@@ -369,6 +384,21 @@ def create_weld(part: KAPI7.IPart7, line: Line, diameter: float = 10) -> None:
     ec: KAPI5.ksEntityCollection = base_evolution.PathPartArray()
     ec.Add(pl5)
     evolution_e.Update()
+    evolution_e.name = RMWELD + " " + evolution_e.name
+    evolution_e.Update()
+
+    # переименование тела от операции вытягивания и задание слоя и цвета
+
+    bc: KAPI5.ksBodyCollection = evolution_e.BodyCollection()
+    for i in range(bc.GetCount()):
+        b5: KAPI5.ksBody = bc.GetByIndex(i)
+        b7: KAPI7.IBody7 = transfer_to_7(b5)
+        b7.Name = RMWELD + " " + b7.Name
+        if wls.layer != -1:
+            b7.LayerNumber = wls.layer
+        cp = KAPI7.IColorParam7(b7)
+        cp.UseColor = 3  # цвет слоя
+        b7.Update()
 
 
 def are_points_same(pointA: Point, pointB: Point, max_deviation: float) -> bool:
@@ -446,14 +476,11 @@ def merge_lines(lines: list[Line], max_deviation: float = 2) -> list[Line]:
     return lines
 
 
-def create_welds(welds_part_path: str, wls: WeldLineSettings) -> None:
+def create_welds(wls: WeldLineSettings) -> None:
     """
-    Анализирует выбранные в текущей модели объекты. Создает твердотельные модели
-    сварных швов в модели по пути `welds_part_path`.
+    Анализирует выбранные в текущей модели объекты.
+    Создает твердотельные модели сварных швов.
     """
-
-    welds_part_path = os.path.normpath(welds_part_path)  # это важно. Если передать путь с прямыми слэшами "/", Компас молча что-то делает, но по факту ничего не происходит
-    opened = remember_opened_document()
 
     # анализ выбранных объектов текущей модели
 
@@ -496,6 +523,9 @@ def create_welds(welds_part_path: str, wls: WeldLineSettings) -> None:
     # склеивание стыкующихся линий в одну большую
     merge_lines(lines, wls.diameter / 5)
 
+    # создание прерывистых швов
+    pass  # TODO
+
     print(f"Всего непрерывных сварных швов: {len(lines)}")
 
     if len(lines) == 0:
@@ -503,22 +533,17 @@ def create_welds(welds_part_path: str, wls: WeldLineSettings) -> None:
 
     # создание твердых тел сварных швов
 
-    welddoc, weldpart = open_part(welds_part_path, True)
+    welddoc, weldpart = open_part()
 
     s_errors: str = ""
 
     for line in lines:
         try:
-            create_weld(weldpart, line, wls.diameter)
+            create_weld(weldpart, line, wls)
         except Exception as e:
             s_errors += traceback.format_exc() + "\n"
 
-
-    welddoc.Save()
-
-    # возврат к ранее открытому документу
-
-    restore_opened_document(opened)
+    # welddoc.Save()
 
     kompas5, kompas7 = get_kompas_objects()
     kompas5.ksRefreshActiveWindow()
@@ -536,6 +561,7 @@ class WeldingMacros(Macros):
         )
 
         self._welddoc_path = ""
+        self._layer_number = 1
 
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
@@ -582,9 +608,12 @@ class WeldingMacros(Macros):
             )
             return
 
-        self.execute(
-            lambda: create_welds(self._welddoc_path, WeldLineSettings(10.0))  # FIXME диаметр шва сделать из config
-        )
+        def _create_welds_kompas():
+            wls = WeldLineSettings(10.0, 20.0)  # FIXME брать из config
+            # wls.layer = -1  # FIXME брать из config
+            create_welds(wls)
+
+        self.execute(_create_welds_kompas)
 
     def _change_welddoc_path(self) -> None:
         try:
@@ -604,7 +633,8 @@ class WeldingMacros(Macros):
 
 
 if __name__ == "__main__":
-    path = r"D:\modeling\KompasExperiments\обозначения-сварки\010 Рама сварная\(сварные швы).a3d"
+
     wls = WeldLineSettings()
-    create_welds(path, wls)
+    wls.layer = -1
+    create_welds(wls)
 
