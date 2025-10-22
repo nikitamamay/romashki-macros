@@ -16,18 +16,23 @@ import sys
 from src.json_utils import JSONable
 
 
+IS_VERBOSE: bool = True
+"""Global variable, sets the verbose mode. By default is `True`."""
+
+
 class IConfig(JSONable):
     pass
 
 
 def get_user_config_folder(program_name: str) -> str:
     if sys.platform == "win32":
-        folder_path = os.getenv("APPDATA")
+        appdata = os.getenv("APPDATA")
+        folder_path = appdata if not appdata is None else ""
     elif sys.platform == "linux":
         folder_path = "~/.config"
     else:
         print(f'Your current platform is "{sys.platform}". Only "win32" and "linux" is supported for now. Sorry.')
-        sys.exit(1)
+        raise Exception(f"Unsupported platform '{sys.platform}'")
     return os.path.abspath(os.path.join(folder_path, program_name))
 
 
@@ -67,14 +72,16 @@ def do_paths_intersect(path1: str, path2: str) -> bool:
     return sp1.startswith(sp2) or sp2.startswith(sp1)
 
 
+def json_copy(obj: dict) -> dict:
+    return json.loads(json.dumps(obj, ensure_ascii=False))
+
 
 class ConfigReader():
     def __init__(self, default_config: dict = {}) -> None:
         self._filepath: str = ""
 
         self._default_config: dict = default_config
-        self._cfg: dict = self._default_config.copy()
-        self._verbose_saving = False
+        self._cfg: dict = json_copy(self._default_config)
 
     @staticmethod
     def load_or_create_default_config_in_configfolder(program_name: str, default_config: dict = {}) -> 'ConfigReader':
@@ -84,7 +91,8 @@ class ConfigReader():
         if os.path.exists(app_config_file):
             return ConfigReader.read_from_file(app_config_file, default_config)
         else:
-            # print(app_config_folder, app_config_file, sep="\n")
+            if IS_VERBOSE:
+                print(f'Config file "{app_config_file}" not found. Using default config.')
             cr = ConfigReader(default_config)
             cr.set_filepath(app_config_file)
             cr.save()
@@ -95,21 +103,24 @@ class ConfigReader():
         if not os.path.isfile(filepath):
             raise Exception(f'"{filepath}" is not a file or does not exist')
 
+        if IS_VERBOSE:
+            print(f'Reading config from file: "{filepath}"')
+
         cr = ConfigReader(default_config)
         cr.set_filepath(filepath)
         cr.reload()
         return cr
 
     def copy(self) -> 'ConfigReader':
-        cr = ConfigReader(self._default_config.copy())
-        cr._cfg = self._cfg.copy()
+        cr = ConfigReader(json_copy(self._default_config))
+        cr._cfg = json_copy(self._cfg)
         return cr
 
     def assign(self, cr: 'ConfigReader') -> None:
-        self._cfg = cr._cfg.copy()
-        self._default_config = cr._default_config.copy()
+        self._cfg = json_copy(cr._cfg)
+        self._default_config = json_copy(cr._default_config)
 
-    def save(self, config: dict = None) -> None:
+    def save(self, config: dict|None = None) -> None:
         if self._filepath == "":
             raise Exception('Config filename is not specified')
 
@@ -121,21 +132,32 @@ class ConfigReader():
                 ensure_ascii=False,
                 indent=2
             )
-        if self._verbose_saving:
+        if IS_VERBOSE:
             print("Config saved.")
 
     def save_default(self) -> None:
         self.save(self._default_config)
 
-    def reload(self) -> dict:
-        if not os.path.isfile(self._filepath):
+    def reload(self, do_reset: bool = False) -> None:
+        if do_reset:
+            if IS_VERBOSE:
+                print("Resetting the config.", end=" ")
             self.save_default()
+
+        if not os.path.isfile(self._filepath):
+            if IS_VERBOSE:
+                print(f"File '{self._filepath}' is not present. Writing the default config.", end=" ")
+            self.save_default()
+
         try:
             with open(self._filepath, "r", encoding="utf-8") as f:
                 self._cfg.update(json.load(f))
+
+                if IS_VERBOSE:
+                    print("Config is loaded.")
+
         except Exception as e:
-            print(e.__class__.__name__, ": ", str(e), sep="")
-            print("Using the default config.")
+            print(f'Error while loading the config: {e.__class__.__name__}: {e}')
 
     def set_filepath(self, filepath: str) -> None:
         self._filepath = os.path.abspath(filepath)
@@ -146,8 +168,8 @@ class ConfigReader():
     def set_default_config(self, default_config: dict) -> None:
         self._default_config = default_config
 
-
-
+    def reset_config(self) -> None:
+        self.reload(do_reset = True)
 
 
 if __name__ == "__main__":
