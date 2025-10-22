@@ -54,4 +54,6 @@ if not is_kompas_running():
 w = gui.MainWindow()
 w.show()
 
+config.execute_after_config_reset()
+
 app.exec()

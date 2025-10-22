@@ -16,6 +16,17 @@ EXT_ASSEMBLY = "Компас-Сборка (*.a3d)"
 EXT_ALL = "Все файлы (*)"
 
 
+def move_to_screen_center(widget: QtWidgets.QWidget) -> None:
+    screen = QtWidgets.qApp.primaryScreen()
+    if screen is None:
+        raise Exception("Cannot find primary screen")
+    s_size = screen.size()
+    widget.move(
+        int(s_size.width() / 2 - widget.width() / 2),
+        int(s_size.height() / 2 - widget.height() / 2)
+    )
+
+
 class LabelImage(QtWidgets.QLabel):
     def __init__(self, path: str, parent = None):
         super().__init__(parent)

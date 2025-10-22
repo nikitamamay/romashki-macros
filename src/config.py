@@ -13,26 +13,30 @@ PROGRAM_NAME = "RomashkiMacros"
 APP_CONFIG_FOLDER = config_reader.get_user_config_folder(PROGRAM_NAME)
 
 
+config_reader.IS_VERBOSE = True
 
 cr = config_reader.ConfigReader.load_or_create_default_config_in_configfolder(
     PROGRAM_NAME,
     {
-        "macroses_config": {},
+        "general": {
+            "after_config_reset": True,
+        },
         "interface": {
-            "show_all_toolbar_widgets": True,
-            "toolbar_widgets": [],
-            "icon_size": 16,
+            "icon_size": 20,
             "stays_on_top": True,
-        }
+            "toolbars": [],
+        },
+        "macroses_config": {},
     }
 )
-cr._verbose_saving = True
 
 dh = delayed_handler.DelayedHandler()
 task_save_config = dh.create_task(
     lambda: cr.save(),
     1,
 )
+
+after_config_reset_handlers: list = []
 
 
 def interface() -> dict:
@@ -42,6 +46,20 @@ def macros(codename: str) -> dict:
     if not codename in cr._cfg["macroses_config"]:
         cr._cfg["macroses_config"][codename] = {}
     return cr._cfg["macroses_config"][codename]
+
+def general() -> dict:
+    return cr._cfg["general"]
+
+def set_after_config_reset_handler(f) -> None:
+    after_config_reset_handlers.append(f)
+
+def execute_after_config_reset() -> None:
+    if general()["after_config_reset"]:
+        print("Executing after-reset procedures...")
+        for f in after_config_reset_handlers:
+            f()
+        general()["after_config_reset"] = False
+        print("Done setting after-reset state")
 
 
 ### CONFIG CHECK
@@ -59,15 +77,20 @@ except:
     cr._cfg["interface"] = {}
 
 try:
-    assert "toolbar_widgets" in interface()
-    assert isinstance(interface()["toolbar_widgets"], list)
-    for el in interface()["toolbar_widgets"]:
-        assert isinstance(el, list)
-        assert len(el) == 2
-        assert isinstance(el[0], str)
-        assert isinstance(el[1], str)
+    assert "toolbars" in interface()
+    assert isinstance(interface()["toolbars"], list)
+    for el in interface()["toolbars"]:
+        assert isinstance(el, dict)
+        assert isinstance(el["name"], str)
+        assert isinstance(el["has_break_before"], bool)
+        assert isinstance(el["is_hidden"], bool)
+        assert isinstance(el["contents"], list)
+        for a in el["contents"]:
+            assert len(a) == 2
+            assert isinstance(a[0], str)
+            assert isinstance(a[1], str)
 except:
-    interface()["toolbar_widgets"] = []
+    interface()["toolbars"] = []
 
 try:
     assert "icon_size" in interface()
@@ -82,21 +105,21 @@ except:
     interface()["stays_on_top"] = True
 
 try:
-    assert "show_all_toolbar_widgets" in interface()
-    assert isinstance(interface()["show_all_toolbar_widgets"], bool)
+    assert "general" in cr._cfg
+    assert isinstance(cr._cfg["general"], dict)
 except:
-    interface()["show_all_toolbar_widgets"] = True
+    cr._cfg["general"] = {}
 
+try:
+    assert isinstance(general()["after_config_reset"], bool)
+except:
+    general()["after_config_reset"] = False
 
 
 ### BINDINGS FOR EASIER USAGE
 
-def toolbar_widgets() -> list[list[str, str]]:
-    return interface()["toolbar_widgets"]
-
-def set_toolbar_widgets(l: list[list[str, str]]) -> None:
-    interface()["toolbar_widgets"].clear()
-    interface()["toolbar_widgets"].extend(l)
+def toolbars() -> list[dict]:
+    return interface()["toolbars"]
 
 def get_icon_size() -> int:
     return interface()["icon_size"]
