@@ -303,6 +303,7 @@ class MacrosStamp(Macros):
 
         try:
             assert isinstance(self._config["templates"], list)
+            assert len(self._config["templates"]) > 0
             for name, template in self._config["templates"]:
                 assert isinstance(name, str)
                 assert isinstance(template, dict)
@@ -310,7 +311,13 @@ class MacrosStamp(Macros):
                     assert isinstance(key, str)
                     assert isinstance(value, str)
         except Exception as e:
-            self._config["templates"] = []
+            self._config["templates"] = [
+                ["Иванов", {
+                    StampCellNumbers.Razrabotal: "Иванов",
+                    StampCellNumbers.Proveril: "Петров",
+                    StampCellNumbers.Utverdil: "Сидоров",
+                }],
+            ]
 
         try:
             assert isinstance(self._config["current_template"], int)
