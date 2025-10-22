@@ -152,12 +152,14 @@ class MaterialInputWidget(QtWidgets.QWidget):
         )
 
         self._l_le = QtWidgets.QGridLayout()
+        self._l_le.setContentsMargins(0,0,0,0)
         self._l_le.addWidget(self._le_left, 1, 0, 3, 1)
         self._l_le.addWidget(self._le_top, 0, 1, 2, 1)
         self._l_le.addWidget(self._le_bottom, 3, 1, 2, 1)
         self._l_le.addWidget(_lbl_line, 2, 1, 1, 1)
 
         self._l = QtWidgets.QGridLayout()
+        self._l.setContentsMargins(0,0,0,0)
         self._l.addLayout(self._l_le, 0, 0, 1, 2)
         self._l.addWidget(QtWidgets.QLabel("Однострочная запись:"), 1, 0, 1, 1)
         self._l.addWidget(self._lbl_str, 1, 1, 1, 1)
@@ -299,10 +301,12 @@ class MacrosFastMaterial(Macros):
         def _selection_changed() -> None:
             item = materials_list.get_one_selected_item()
             if not item is None:
+                miw.setEnabled(True)
                 s_raw = ensure_value(item.data(self.DATA_ROLE_RAW), "")
                 density = ensure_value(item.data(self.DATA_ROLE_DENSITY), 0.0)
                 miw.set_material(s_raw, density)
             else:
+                miw.setEnabled(False)
                 miw.clear()
 
         def _material_data_changed() -> None:
@@ -337,12 +341,12 @@ class MacrosFastMaterial(Macros):
         l.addWidget(materials_list, 0, 0, 1, 1)
         l.addWidget(miw, 1, 0, 1, 1)
 
-        materials_list.clear_selection()
-
         miw.data_edited.connect(_material_data_changed)
         materials_list.selection_changed.connect(_selection_changed)
         materials_list.list_changed.connect(lambda: self.toolbar_update_requested.emit(False))
         materials_list.list_changed.connect(lambda: _save_list())
+
+        materials_list.clear_selection()
 
         return w
 

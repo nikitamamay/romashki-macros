@@ -817,6 +817,7 @@ class WeldSpecInputWidget(QtWidgets.QWidget):
         self._sb_layer.valueChanged.connect(lambda: self.data_edited.emit())
 
         self._layout = QtWidgets.QGridLayout()
+        self._layout.setContentsMargins(0,0,0,0)
         self._layout.addWidget(QtWidgets.QLabel("Диаметр условного валика шва"), 0, 0, 1, 1)
         self._layout.addWidget(self._sb_diameter, 0, 1, 1, 1)
         self._layout.addWidget(QtWidgets.QLabel("Слой для твёрдых тел шва\n(укажите -1 для использования активного слоя)"), 1, 0, 1, 1)

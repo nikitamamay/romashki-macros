@@ -80,6 +80,7 @@ class RVDSizeInputWidget(QtWidgets.QWidget):
         self._sb_d.valueChanged.connect(lambda: self.data_edited.emit())
 
         self._layout = QtWidgets.QGridLayout()
+        self._layout.setContentsMargins(0,0,0,0)
         self._layout.addWidget(QtWidgets.QLabel("Диаметр наружный"), 0, 0, 1, 1)
         self._layout.addWidget(self._sb_D, 0, 1, 1, 1)
         self._layout.addWidget(QtWidgets.QLabel("Диаметр внутренний"), 1, 0, 1, 1)
@@ -158,10 +159,12 @@ class FastRVDMacros(Macros):
         def _selection_changed() -> None:
             item = rvd_sizes_list.get_one_selected_item()
             if not item is None:
+                siw.setEnabled(True)
                 D = item.data(self.DATAROLE_D_MAJOR)
                 d = item.data(self.DATAROLE_D_MINOR)
                 siw.set_data(D, d)
             else:
+                siw.setEnabled(False)
                 siw.clear()
 
         w = QtWidgets.QWidget()
@@ -181,12 +184,12 @@ class FastRVDMacros(Macros):
         l.addWidget(rvd_sizes_list, 0, 0, 1, 1)
         l.addWidget(siw, 1, 0, 1, 1)
 
-        rvd_sizes_list.clear_selection()
-
         siw.data_edited.connect(_rvd_size_data_changed)
         rvd_sizes_list.selection_changed.connect(_selection_changed)
         rvd_sizes_list.list_changed.connect(lambda: self.toolbar_update_requested.emit(False))
         rvd_sizes_list.list_changed.connect(lambda: _save_list())
+
+        rvd_sizes_list.clear_selection()
 
         return w
 

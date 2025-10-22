@@ -31,7 +31,7 @@ class Macros(QtCore.QObject):
         return {}
 
     def settings_widget(self) -> QtWidgets.QWidget:
-        l = QtWidgets.QLabel(f'Нет доступных настроек для макроса "{self.full_name}".')
+        l = QtWidgets.QLabel(f'Нет доступных настроек для макроса «{self.full_name}».')
         l.setWordWrap(True)
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         return l
