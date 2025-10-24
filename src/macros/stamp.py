@@ -72,25 +72,27 @@ def format_date(date: datetime.date|None = None, fmt: str = "%d.%m.%y") -> str:
     return date.strftime(fmt)
 
 
-def stamp_numbers(max_number: int = 1000, sheet_number: int = 1) -> None:
+def stamp_numbers(max_number: int = 10000) -> None:
     """
-    [Для разработчика] Заполняет все ячейки основной надписи их номерами.
+    Заполняет все ячейки основных надписей всех листов в текущем графическом
+    документе номерами этих ячеек.
+
     Позволяет выяснить, какой номер у определенной ячейки.
     """
-    app: KAPI7.IApplication = get_app7()
-    doc: KAPI7.IKompasDocument = app.ActiveDocument
+    doc = open_doc2d()
 
     lss: KAPI7.ILayoutSheets = doc.LayoutSheets
 
-    ls: KAPI7.ILayoutSheet = lss.ItemByNumber(sheet_number)
+    for i in range(lss.Count):
+        ls: KAPI7.ILayoutSheet = lss.Item(i)
 
-    stamp: KAPI7.IStamp = ls.Stamp
+        stamp: KAPI7.IStamp = ls.Stamp
 
-    for col_id in range(0, max_number):
-        txt: KAPI7.IText = stamp.Text(col_id)
-        txt.Str = f"{col_id}"
+        for col_id in range(0, max_number):
+            txt: KAPI7.IText = stamp.Text(col_id)
+            txt.Str = f"{col_id}"
 
-    stamp.Update()
+        stamp.Update()
 
 
 def stamp(data: dict[int, str], sheet_number: int = 1) -> None:
@@ -188,6 +190,7 @@ class ValueEditDelegate(QtWidgets.QStyledItemDelegate):
 
 class StampTemplateWidget(QtWidgets.QWidget):
     data_changed = QtCore.pyqtSignal()
+    fill_stamp_cell_numbers_requested = QtCore.pyqtSignal()
 
     def __init__(self, data: dict[str, str] = {}, parent = None) -> None:
         super().__init__(parent)
@@ -226,8 +229,18 @@ class StampTemplateWidget(QtWidgets.QWidget):
         self._btn_delete.clicked.connect(self.delete_selected)
 
         self._btn_info = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/information.svg")), "Номера ячеек")
-        self._btn_info.setToolTip("Показать номера ячеек")
+        self._btn_info.setToolTip(
+            "Показать номера ячеек в основной надписи\n"
+            "первого листа конструкторских чертежей"
+        )
         self._btn_info.clicked.connect(self.show_info)
+
+        self._btn_fill_stamp_numbers = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/stamp_go.svg")), "Узнать номера ячеек")
+        self._btn_fill_stamp_numbers.setToolTip(
+            "Заполнить в текущем документе все ячейки\n"
+            "основных надписей всех листов текущего документа"
+        )
+        self._btn_fill_stamp_numbers.clicked.connect(self.request_fill_stamp_cell_numbers)
 
         self._layout_btn = QtWidgets.QHBoxLayout()
         self._layout_btn.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
@@ -235,6 +248,7 @@ class StampTemplateWidget(QtWidgets.QWidget):
         self._layout_btn.addWidget(self._btn_add)
         self._layout_btn.addWidget(self._btn_delete)
         self._layout_btn.addWidget(self._btn_info)
+        self._layout_btn.addWidget(self._btn_fill_stamp_numbers)
 
         self._layout = QtWidgets.QVBoxLayout()
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -286,7 +300,19 @@ class StampTemplateWidget(QtWidgets.QWidget):
 
     def show_info(self) -> None:
         self._lbl_info_img.show()
-        self._lbl_info_img.move_to_screen_center()
+        gui_widgets.move_to_screen_center(self._lbl_info_img)
+
+    def request_fill_stamp_cell_numbers(self) -> None:
+        btn = QtWidgets.QMessageBox.warning(
+            self,
+            "Внимание!",
+            "Команда заполнит все возможные ячейки основной надписи в текущем графическом документе их номерами.\n\nВы уверены, что хотите продолжить?",
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.Cancel,
+            QtWidgets.QMessageBox.StandardButton.Cancel,
+        )
+        if btn == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.fill_stamp_cell_numbers_requested.emit()
+
 
 
 class MacrosStamp(Macros):
@@ -434,6 +460,7 @@ class MacrosStamp(Macros):
         _apply_datetime_format(to_save=False)
 
         stamp_template_widget = StampTemplateWidget()
+        stamp_template_widget.fill_stamp_cell_numbers_requested.connect(lambda: self.execute(stamp_numbers))
 
         template_selector = gui_widgets.StringListSelector(_create_new_template)
         for t in self._config["templates"]:
