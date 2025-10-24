@@ -314,7 +314,6 @@ class StringListSelector(QtWidgets.QWidget):
         self._is_adding_allowed = True
         self._is_name_editing_allowed = True
         self._is_deleting_allowed = True
-        self._is_multiple_selecting_allowed = True
 
         self._model = QtGui.QStandardItemModel()
         self._model.dataChanged.connect(lambda: self.list_changed.emit())
@@ -394,6 +393,12 @@ class StringListSelector(QtWidgets.QWidget):
         self.set_duplicating_allowed(False)
         self.set_deleting_allowed(False)
         self.set_name_editing_allowed(False)
+
+    def set_single_selecting_only(self, is_single_only: bool) -> None:
+        if is_single_only:
+            self._view.setSelectionMode(QtWidgets.QListView.SelectionMode.SingleSelection)
+        else:
+            self._view.setSelectionMode(QtWidgets.QListView.SelectionMode.ExtendedSelection)
 
     def get_list(self) -> list[str]:
         l: list[str] = []
@@ -519,9 +524,25 @@ class StringListSelector(QtWidgets.QWidget):
     def clear_selection(self) -> None:
         self._view.clearSelection()
 
+    def select_single_item(self, item: QtGui.QStandardItem) -> None:
+        index = item.index()
+        self._view.selectionModel().select(
+            index,
+            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
+        )
+
+    def select_single_row(self, row: int) -> None:
+        index = self._model.index(row, 0)
+        self._view.selectionModel().select(
+            index,
+            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
+        )
+
     def iterate_items(self):
         for r in range(self._model.rowCount()):
-            yield self._model.item(r, 0)
+            item = self._model.item(r, 0)
+            if not item is None:
+                yield item
 
     def model(self) -> QtGui.QStandardItemModel:
         return self._model
