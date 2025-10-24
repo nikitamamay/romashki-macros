@@ -22,7 +22,7 @@ cr = config_reader.ConfigReader.load_or_create_default_config_in_configfolder(
             "after_config_reset": True,
         },
         "interface": {
-            "icon_size": 20,
+            "icon_size": 24,
             "stays_on_top": True,
             "toolbars": [],
         },

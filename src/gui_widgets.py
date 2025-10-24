@@ -55,13 +55,6 @@ class LabelImage(QtWidgets.QLabel):
         painter.translate(self.width()/2 - p.width()/2, self.height()/2 - p.height()/2)
         painter.drawPixmap(0, 0, p)
 
-    def move_to_screen_center(self) -> None:
-        s_size = QtWidgets.qApp.primaryScreen().size()
-        self.move(
-            int(s_size.width() / 2 - self.width() / 2),
-            int(s_size.height() / 2 - self.height() / 2)
-        )
-
 
 class WidgetColorSelect(QtWidgets.QWidget):
     color_changed = QtCore.pyqtSignal(int)
