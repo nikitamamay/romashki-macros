@@ -33,9 +33,30 @@ from src.gui_macros import Macros
 
 from src.resources import get_resource_path
 
+import typing
+import re
 
 
-DEFAULT_PAINT = [0x909090, 0.5, 0.6, 0.8, 0.8, 0.0, 0.5]  # краска по-умолчанию для деталей в Компас16
+PaintData: typing.TypeAlias = tuple[int, float, float, float, float, float, float]
+"""
+1. `int` - цвет в формате `0xRRGGBB` (**отличается от API Компас**);
+2. `float` - Ambient (Общий цвет);
+3. `float` - Diffuse (Диффузия);
+4. `float` - Specularity (Зеркальность);
+5. `float` - Shininess (Блеск);
+6. `float` - Transparency (Прозрачность) (**отличается от API Компас**: 0 - непрозрачный, 1 - полностью прозрачный);
+7. `float` - Emission (Излучение).
+
+Следует использовать следующим образом:
+```
+KAPI7.IColorParam7.SetAdvancedColor(color_traditional_to_kompas(color), Am, Di, Sp, Sh, 1 - Tr, Em)
+```
+"""
+
+DEFAULT_PAINT: PaintData = [0x909090, 0.5, 0.6, 0.8, 0.8, 0.0, 0.5]  # краска по-умолчанию для деталей в Компас16
+
+
+re_html_color = re.compile(r'#[0-9,a-f,A-F]{6}', re.I)
 
 
 class UseColorEnum:
@@ -46,7 +67,7 @@ class UseColorEnum:
     useColorLayer = 3  # Цвет слоя
 
 
-def paint_parts(paint, useColor = UseColorEnum.useColorOur, is_recursive = False) -> None:
+def paint_parts(paint: PaintData, useColor = UseColorEnum.useColorOur, is_recursive = False) -> None:
     def apply_color(part: KAPI7.IPart7):
         if part.IsLayoutGeometry or KAPI7.IFeature7(part).Excluded:
             print(f"Пропускается от перекрашивания: {part.Marking} {part.Name} {part.FileName}")
@@ -83,7 +104,7 @@ def paint_parts(paint, useColor = UseColorEnum.useColorOur, is_recursive = False
     print("Перекрашивание окончено.")
 
 
-def get_current_color() -> tuple[int, float, float, float, float, float, float]:
+def get_current_color() -> PaintData:
     doc, part = open_part()
     cp = KAPI7.IColorParam7(part)
     _, color_kompas, Am, Di, Sp, Sh, Tr, Em = cp.GetAdvancedColor()
@@ -94,18 +115,77 @@ def get_current_color() -> tuple[int, float, float, float, float, float, float]:
     return paint
 
 
-def get_icon_from_color(color: int) -> QtGui.QIcon:
-    p = QtGui.QPixmap(16, 16)
-    painter = QtGui.QPainter(p)
-    painter.setBrush(QtGui.QColor(color))
-    painter.setPen(QtGui.QColorConstants.Black)
-    painter.drawRect(0, 0, 15, 15)
-    painter.end()
-    return QtGui.QIcon(p)
+class PaintInputWidget(QtWidgets.QWidget):
+    data_edited = QtCore.pyqtSignal()
 
+    def __init__(self, parent = None):
+        super().__init__(parent)
+        self._color_dialog = QtWidgets.QColorDialog()
+        self._color_dialog.setWindowFlags(QtCore.Qt.WindowType.Widget)
+        self._color_dialog.setOption(QtWidgets.QColorDialog.ColorDialogOption.NoButtons, True)
+        self._color_dialog.currentColorChanged.connect(lambda: self.data_edited.emit())
+
+        self._layout = QtWidgets.QGridLayout()
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self._layout)
+
+        self._layout.addWidget(self._color_dialog, 0, 0, 1, 3)
+
+        self._slider_ambient = self.create_slider("Общий цвет", 0)
+        self._slider_diffuse = self.create_slider("Диффузия", 1)
+        self._slider_specularity = self.create_slider("Зеркальность", 2)
+        self._slider_shininess = self.create_slider("Блеск", 3)
+        self._slider_transparency = self.create_slider("Прозрачность", 5)
+        self._slider_emission = self.create_slider("Излучение", 4)
+
+    def clear(self) -> None:
+        pass
+
+    def get_data(self) -> PaintData:
+        color = self._color_dialog.currentColor().rgb() & 0xffffff
+        Am = self._slider_ambient.value() / 100
+        Di = self._slider_diffuse.value() / 100
+        Sp = self._slider_specularity.value() / 100
+        Sh = self._slider_shininess.value() / 100
+        Tr = self._slider_transparency.value() / 100
+        Em = self._slider_emission.value() / 100
+        return (color, Am, Di, Sp, Sh, Tr, Em)
+
+    def set_data(self, paint_data: PaintData) -> None:
+        color, Am, Di, Sp, Sh, Tr, Em = paint_data
+        self._color_dialog.setCurrentColor(QtGui.QColor(color))
+        self._slider_ambient.setValue(round(Am * 100))
+        self._slider_diffuse.setValue(round(Di * 100))
+        self._slider_specularity.setValue(round(Sp * 100))
+        self._slider_shininess.setValue(round(Sh * 100))
+        self._slider_transparency.setValue(round(Tr * 100))
+        self._slider_emission.setValue(round(Em * 100))
+
+    def create_slider(self, text: str, row: int) -> QtWidgets.QSlider:
+        lbl_info = QtWidgets.QLabel(text)
+
+        lbl_value = QtWidgets.QLabel("  0")
+        lbl_value.setFont(gui_widgets.get_monospace_font())
+
+        slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        slider.setRange(0, 100)
+        slider.setPageStep(10)
+        slider.setSingleStep(1)
+        slider.setTickInterval(10)
+        slider.setTickPosition(QtWidgets.QSlider.TickPosition.TicksBelow)
+        slider.valueChanged.connect(lambda: lbl_value.setText(str(slider.value()).rjust(3)))
+        slider.valueChanged.connect(lambda: self.data_edited.emit())
+
+        self._layout.addWidget(lbl_info, row + 1, 0, 1, 1)
+        self._layout.addWidget(slider, row + 1, 1, 1, 1)
+        self._layout.addWidget(lbl_value, row + 1, 2, 1, 1)
+
+        return slider
 
 
 class MacrosPartsPainting(Macros):
+    DATA_ROLE_PAINT_DATA = 100
+
     def __init__(self) -> None:
         super().__init__(
             "parts_painting",
@@ -125,7 +205,7 @@ class MacrosPartsPainting(Macros):
                     assert isinstance(number, (float))
         except:
             self._config["paints_list"] = [
-                ["Стандартная краска Компас v16", DEFAULT_PAINT],
+                ["Стандартная краска", DEFAULT_PAINT],
             ]
             config.save_delayed()
 
@@ -134,6 +214,90 @@ class MacrosPartsPainting(Macros):
         except:
             self._config["do_paint_children"] = False
             config.save_delayed()
+
+    def settings_widget(self) -> QtWidgets.QWidget:
+        def _create_new_item() -> QtGui.QStandardItem:
+            item = QtGui.QStandardItem()
+            item.setData("Краска", QtCore.Qt.ItemDataRole.DisplayRole)
+            item.setData(DEFAULT_PAINT, self.DATA_ROLE_PAINT_DATA)
+            item.setIcon(gui_widgets.get_icon_from_color(DEFAULT_PAINT[0]))
+            return item
+
+        def _save_list() -> None:
+            self._config["paints_list"].clear()
+            for item in paints_selector.iterate_items():
+                name = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
+                paint_data = item.data(self.DATA_ROLE_PAINT_DATA)
+                paint = [name, paint_data]
+                self._config["paints_list"].append(paint)
+            config.save_delayed()
+
+        def _selection_changed() -> None:
+            item = paints_selector.get_one_selected_item()
+            if not item is None:
+                piw.setEnabled(True)
+                paint_data = item.data(self.DATA_ROLE_PAINT_DATA)
+                piw.set_data(paint_data)
+            else:
+                piw.setEnabled(False)
+                piw.clear()
+
+        def _input_widget_data_changed() -> None:
+            paint_data = piw.get_data()
+            item = paints_selector.get_one_selected_item()
+            if not item is None:
+                name: str = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
+                if re_html_color.match(name):
+                    s_color = "#" + pretty_print_color(paint_data[0])
+                    item.setData(s_color, QtCore.Qt.ItemDataRole.DisplayRole)
+
+                item.setData(paint_data, self.DATA_ROLE_PAINT_DATA)
+                item.setIcon(gui_widgets.get_icon_from_color(paint_data[0]))
+                _save_list()
+
+        def _change_config() -> None:
+            self._config["do_paint_children"] = cb_check_do_paint_children.isChecked()
+            self.toolbar_update_requested.emit(False)
+            config.save_delayed()
+
+        w = QtWidgets.QWidget()
+        l = QtWidgets.QGridLayout()
+        l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        w.setLayout(l)
+
+        cb_check_do_paint_children = QtWidgets.QCheckBox("Рекурсивно красить все дочерние компоненты")
+        cb_check_do_paint_children.setToolTip(
+            "Включить или отключить опцию рекурсивной покраски\n"
+            "не только выбранных компонентов, но и входящих\n"
+            "в него компонентов по всем уровням.\n\n"
+            "Компоновочная геометрия и исключенные из расчета\n"
+            "компоненты и их дочерние компоненты не красятся."
+        )
+        cb_check_do_paint_children.setChecked(self._config["do_paint_children"])
+        cb_check_do_paint_children.stateChanged.connect(_change_config)
+
+        paints_selector = gui_widgets.StringListSelector(_create_new_item)
+        for name, paint_data in self._config["paints_list"]:
+            item = QtGui.QStandardItem()
+            item.setData(name, QtCore.Qt.ItemDataRole.DisplayRole)
+            item.setData(paint_data, self.DATA_ROLE_PAINT_DATA)
+            item.setIcon(gui_widgets.get_icon_from_color(paint_data[0]))
+            paints_selector.add_new_item(item)
+
+        piw = PaintInputWidget()
+
+        l.addWidget(cb_check_do_paint_children, 0, 0, 1, 1)
+        l.addWidget(paints_selector, 1, 0, 1, 1)
+        l.addWidget(piw, 2, 0, 1, 1)
+
+        piw.data_edited.connect(_input_widget_data_changed)
+        paints_selector.selection_changed.connect(_selection_changed)
+        paints_selector.list_changed.connect(lambda: self.toolbar_update_requested.emit(False))
+        paints_selector.list_changed.connect(_save_list)
+
+        paints_selector.clear_selection()
+
+        return w
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _apply_paint(paint_index: int) -> None:
@@ -146,13 +310,14 @@ class MacrosPartsPainting(Macros):
             self._config["do_paint_children"] = state
             config.save_delayed()
 
+        # btn_paint = gui_widgets.ButtonWithList(QtGui.QIcon(get_resource_path("img/macros/paint_bucket.svg")), "")
         btn_paint = gui_widgets.ButtonWithList(QtGui.QIcon(get_resource_path("img/macros/paint_bucket.svg")), "")
         btn_paint.clicked.connect(lambda: self.execute(self._paint_with_first_color))
         btn_paint.setToolTip("Покрасить текущую модель первой краской в списке")
 
         for i, m in enumerate(self._config["paints_list"]):
             name, paint = m
-            btn_paint.menu().addAction(get_icon_from_color(paint[0]), name, (lambda i: lambda: _apply_paint(i))(i))
+            btn_paint.menu().addAction(gui_widgets.get_icon_from_color(paint[0]), name, (lambda i: lambda: _apply_paint(i))(i))
 
         btn_paint.menu().addSeparator()
 
@@ -178,11 +343,13 @@ class MacrosPartsPainting(Macros):
         btn_paint.menu().addSeparator()
 
         a_paint_children = QtWidgets.QAction("Красить все дочерние компоненты", btn_paint.menu())
-        a_paint_children.setToolTip("Включить или отключить опцию рекурсивной покраски\n"
-                                    "не только выбранных компонентов, но и входящих\n"
-                                    "в него компонентов по всем уровням.\n\n"
-                                    "Компоновочная геометрия и исключенные из расчета\n"
-                                    "компоненты и их дочерние компоненты не красятся.")
+        a_paint_children.setToolTip(
+            "Включить или отключить опцию рекурсивной покраски\n"
+            "не только выбранных компонентов, но и входящих\n"
+            "в него компонентов по всем уровням.\n\n"
+            "Компоновочная геометрия и исключенные из расчета\n"
+            "компоненты и их дочерние компоненты не красятся."
+        )
         a_paint_children.setCheckable(True)
         a_paint_children.setChecked(self._config["do_paint_children"])
         a_paint_children.toggled.connect(_do_paint_children_handler)
