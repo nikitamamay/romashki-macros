@@ -144,10 +144,10 @@ def get_line_of_curve(
                 r = curve.GetCurveParam().radius
             step_max = 2 * r * math.sin(math.radians(wls.max_angle_deviation / 2))
             step_recommended = max(step_max, wls.step_min)
-            step_recommended = min(step_max, wls.step_default)
+            # step_recommended = max(min(step_max, wls.step_default), wls.step_min)
         else:
             step_recommended = wls.step_default
-        segments_count = max(1, math.ceil(curve_length / step_recommended))
+        segments_count = max(1, int(curve_length / step_recommended))
         step_real = curve_length / segments_count
 
         line.append(_get_point(_get_T_from_length(0)))
