@@ -356,11 +356,13 @@ class FastRollbackMacros(Macros):
             else:
                 self.execute(f2_move)
 
-        btn_autosort_tree = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/autosort_tree.svg")), "")
+        btn_autosort_tree = QtWidgets.QToolButton()
+        btn_autosort_tree.setIcon(QtGui.QIcon(get_resource_path("img/macros/autosort_tree.svg")))
         btn_autosort_tree.clicked.connect(lambda: self.execute(self._autosort_tree))
         btn_autosort_tree.setToolTip("Выстроить выбранные элементы дерева автоматически по порядку")
 
-        btn_move_features = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/manual_move_features.svg")), "")
+        btn_move_features = QtWidgets.QToolButton()
+        btn_move_features.setIcon(QtGui.QIcon(get_resource_path("img/macros/manual_move_features.svg")))
         btn_move_features.setCheckable(True)
         btn_move_features.toggled.connect(btn_move_toggle)
         btn_move_features.setToolTip(

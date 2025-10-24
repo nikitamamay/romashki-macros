@@ -393,32 +393,37 @@ class MacrosFastDXF(Macros):
         super().__init__("fast_dxf", "Быстрое создание DXF")
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        btn_main_projection = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/main_projection.svg")), "")
+        btn_main_projection = QtWidgets.QToolButton()
+        btn_main_projection.setIcon(QtGui.QIcon(get_resource_path("img/macros/main_projection.svg")))
         btn_main_projection.setToolTip("Создать/обновить ориентацию главного вида в открытой модели")
         btn_main_projection.clicked.connect(lambda: self.execute(self.create_main_projection))
 
-        btn = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/dxf_from_part.svg")), "")
-        btn.setToolTip("Создать DXF для открытой детали")
-        btn.clicked.connect(lambda: self.execute(self.create_dxf_from_part))
+        btn_dxf_from_part = QtWidgets.QToolButton()
+        btn_dxf_from_part.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_from_part.svg")))
+        btn_dxf_from_part.setToolTip("Создать DXF для открытой детали")
+        btn_dxf_from_part.clicked.connect(lambda: self.execute(self.create_dxf_from_part))
 
-        btn2 = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/dxf_from_dwg.svg")), "")
-        btn2.setToolTip(f"Создать DXF из вида \"{FASTDXF_DWG_VIEW_NAME}\" в открытом чертеже")
-        btn2.clicked.connect(lambda: self.execute(self.create_dxf_from_dwg))
+        btn_dxf_from_dwg = QtWidgets.QToolButton()
+        btn_dxf_from_dwg.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_from_dwg.svg")))
+        btn_dxf_from_dwg.setToolTip(f"Создать DXF из вида \"{FASTDXF_DWG_VIEW_NAME}\" в открытом чертеже")
+        btn_dxf_from_dwg.clicked.connect(lambda: self.execute(self.create_dxf_from_dwg))
 
-        btn3 = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/dxf_part_orientation.svg")), "")
-        btn3.setToolTip(f"Создать/обновить ориентацию \"{FASTDXF_PROJECTION_NAME}\" в открытой модели")
-        btn3.clicked.connect(lambda: self.execute(self.update_viewprojection))
+        btn_dxf_projection = QtWidgets.QToolButton()
+        btn_dxf_projection.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_part_orientation.svg")))
+        btn_dxf_projection.setToolTip(f"Создать/обновить ориентацию \"{FASTDXF_PROJECTION_NAME}\" в открытой модели")
+        btn_dxf_projection.clicked.connect(lambda: self.execute(self.update_viewprojection))
 
-        btn4 = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/dxf_save_fragm.svg")), "")
-        btn4.setToolTip(f"Сохранить фрагмент как DXF")
-        btn4.clicked.connect(lambda: self.execute(self.save_fragm))
+        btn_save_fragm = QtWidgets.QToolButton()
+        btn_save_fragm.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_save_fragm.svg")))
+        btn_save_fragm.setToolTip(f"Сохранить фрагмент как DXF")
+        btn_save_fragm.clicked.connect(lambda: self.execute(self.save_fragm))
 
         return {
             "обновить ориентацию главного вида в модели": btn_main_projection,
-            "обновить DXF-ориентацию в модели": btn3,
-            "создать DXF для открытой детали": btn,
-            "создать DXF из открытого чертежа": btn2,
-            "сохранить текущий фрагмент в DXF": btn4,
+            "обновить DXF-ориентацию в модели": btn_dxf_projection,
+            "создать DXF для открытой детали": btn_dxf_from_part,
+            "создать DXF из открытого чертежа": btn_dxf_from_dwg,
+            "сохранить текущий фрагмент в DXF": btn_save_fragm,
         }
 
     def create_dxf_from_part(self) -> None:
@@ -438,15 +443,15 @@ class MacrosFastDXF(Macros):
     def save_fragm(self) -> None:
         QtWidgets.qApp.restoreOverrideCursor()
         path: str = get_path()
-        ext_filter = f"DXF (*.dxf)"
-        ext_filter2 = f"Компас-Фрагмент (*.frw)"
+        ext_dxf = f"DXF (*.dxf)"
+        ext_frw = f"Компас-Фрагмент (*.frw)"
 
         path, _f = QtWidgets.QFileDialog.getSaveFileName(
             self._parent_widget,
             "Сохранить как DXF",
             path,
-            f"{ext_filter};;{ext_filter2};;Все файлы (*)",
-            ext_filter,
+            f"{ext_dxf};;{ext_frw};;Все файлы (*)",
+            ext_dxf,
         )
         if path != "":
             QtWidgets.qApp.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)

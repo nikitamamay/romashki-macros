@@ -48,7 +48,8 @@ class MacrosDoNotDisturb(Macros):
             is_silent = btn_switch.isChecked()
             self.execute(lambda: set_silent_mode(is_silent))
 
-        btn_switch = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/do_not_disturb.svg")), "")
+        btn_switch = QtWidgets.QToolButton()
+        btn_switch.setIcon(QtGui.QIcon(get_resource_path("img/macros/do_not_disturb.svg")))
         btn_switch.setToolTip("Переключить режим \"Не беспокоить\"")
         btn_switch.setCheckable(True)
         btn_switch.setChecked(get_silent_mode() if is_kompas_running() else False)

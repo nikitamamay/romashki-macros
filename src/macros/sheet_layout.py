@@ -109,31 +109,34 @@ class MacrosSheetLayout(Macros):
             config.save_delayed()
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        def _apply_format() -> None:
-            i = cmbx_format.currentIndex()
-            if i > 0:
-                fmt = i - 1
-                self.execute(lambda: self.apply_sheet_format(fmt))
-                cmbx_format.setCurrentIndex(0)
+        def _get_apply_format_function(i: int):
+            return lambda: self.execute(lambda: self.apply_sheet_format(i))
 
-        cmbx_format = QtWidgets.QComboBox()
-        cmbx_format.addItem(QtGui.QIcon(get_resource_path("img/macros/sheet_format.svg")), "")
+        btn_format = QtWidgets.QToolButton()
+        btn_format.setIcon(QtGui.QIcon(get_resource_path("img/macros/sheet_format.svg")))
+        btn_format.setToolTip("Выбор формата листа 2D-документа")
+        btn_format.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+
+        menu_format = QtWidgets.QMenu("Выбор формата листа 2D-документа")
         for i in range(6):
             fmt = f"A{i}"
-            cmbx_format.addItem(fmt)
-        cmbx_format.currentIndexChanged.connect(_apply_format)
-        cmbx_format.setToolTip("Выбор формата листа 2D-документа")
+            action = QtWidgets.QAction(fmt, btn_format)
+            action.triggered.connect(_get_apply_format_function(i))
+            menu_format.addAction(action)
+        btn_format.setMenu(menu_format)
 
-        btn_orientation = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/sheet_orientation.svg")), "")
+        btn_orientation = QtWidgets.QToolButton()
+        btn_orientation.setIcon(QtGui.QIcon(get_resource_path("img/macros/sheet_orientation.svg")))
         btn_orientation.clicked.connect(lambda: self.execute(self.switch_sheet_orientation))
         btn_orientation.setToolTip("Сменить ориентацию формата листа")
 
-        btn_layout = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/sheet_layout.svg")), "")
+        btn_layout = QtWidgets.QToolButton()
+        btn_layout.setIcon(QtGui.QIcon(get_resource_path("img/macros/sheet_layout.svg")))
         btn_layout.clicked.connect(lambda: self.execute(self.apply_lib_layout))
         btn_layout.setToolTip("Применить оформление из библиотеки")
 
         return {
-            "селектор формата листа": cmbx_format,
+            "селектор формата листа": btn_format,
             "кнопка: сменить ориентацию формата листа": btn_orientation,
             "кнопка: применить оформление из библиотеки": btn_layout,
         }

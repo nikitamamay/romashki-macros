@@ -64,12 +64,12 @@ class SettingsWindow(QtWidgets.QWidget):
         self.model_sections.clear()
 
         sections = [
-            ["Общие настройки", self.SECTION_GENERAL, self.ITEM_ROLE_PAGE_CODENAME],
+            ["Общие настройки", self.SECTION_GENERAL, self.SECTION_GENERAL_S],
             ["Интерфейс", self.SECTION_INTERFACE, self.SECTION_INTERFACE_S],
         ]
 
         for i, macros in enumerate(macroses):
-            sections.append([f'Макрос «{macros.full_name}»', self.SECTION_INDEX_OFFSET + i, self.ITEM_ROLE_PAGE_CODENAME])
+            sections.append([f'Макрос «{macros.full_name}»', self.SECTION_INDEX_OFFSET + i, macros.code_name])
 
         for name, index, codename in sections:
             item = QtGui.QStandardItem(name)
@@ -150,6 +150,7 @@ class ToolBar(QtWidgets.QToolBar):
             self.addSeparator()
         elif isinstance(obj, QtWidgets.QWidget):
             self.addWidget(obj)
+            obj.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
         elif isinstance(obj, QtWidgets.QAction):
             self.addAction(obj)
         else:

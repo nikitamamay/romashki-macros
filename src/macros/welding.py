@@ -988,15 +988,18 @@ class WeldingMacros(Macros):
         cmbx_weld_specs.setToolTip("Выбор параметров сварного шва")
         cmbx_weld_specs.currentIndexChanged.connect(_select_active_weld_spec)
 
-        btn_create_weld = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/weld.svg")), "")
+        btn_create_weld = QtWidgets.QToolButton()
+        btn_create_weld.setIcon(QtGui.QIcon(get_resource_path("img/macros/weld.svg")))
         btn_create_weld.clicked.connect(lambda: self.execute(self._create_welds))
         btn_create_weld.setToolTip("Создать сварные швы\n(ломаные линии и твердые тела)\nпо выбранным объектам модели")
 
-        btn_create_lines = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/weld_lines.svg")), "")
+        btn_create_lines = QtWidgets.QToolButton()
+        btn_create_lines.setIcon(QtGui.QIcon(get_resource_path("img/macros/weld_lines.svg")))
         btn_create_lines.clicked.connect(lambda: self.execute(self._create_welds_lines))
         btn_create_lines.setToolTip("Создать только ломаные линии сварных швов\nпо выбранным объектам модели")
 
-        btn_create_bodies = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/weld_bodies.svg")), "")
+        btn_create_bodies = QtWidgets.QToolButton()
+        btn_create_bodies.setIcon(QtGui.QIcon(get_resource_path("img/macros/weld_bodies.svg")))
         btn_create_bodies.clicked.connect(lambda: self.execute(self._create_welds_bodies))
         btn_create_bodies.setToolTip("Создать твёрдые тела сварных швов\nпо ломаным линиям без тел")
 

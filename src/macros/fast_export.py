@@ -197,15 +197,18 @@ class MacrosFastExport(Macros):
             self._config["always_ask_filepath"] = False
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        btn_pdf = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/doc_pdf.svg")), "")
+        btn_pdf = QtWidgets.QToolButton()
+        btn_pdf.setIcon(QtGui.QIcon(get_resource_path("img/macros/doc_pdf.svg")))
         btn_pdf.setToolTip("Экспортировать в PDF\n(любой документ)")
         btn_pdf.clicked.connect(lambda: self.execute(self.export_pdf))
 
-        btn_png = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/doc_png.svg")), "")
+        btn_png = QtWidgets.QToolButton()
+        btn_png.setIcon(QtGui.QIcon(get_resource_path("img/macros/doc_png.svg")))
         btn_png.setToolTip("Экспортировать в PNG\n(3D-модели и чертежи)")
         btn_png.clicked.connect(lambda: self.execute(self.export_png))
 
-        btn_step = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/doc_stp.svg")), "")
+        btn_step = QtWidgets.QToolButton()
+        btn_step.setIcon(QtGui.QIcon(get_resource_path("img/macros/doc_stp.svg")))
         btn_step.setToolTip("Экспортировать в STEP\n(только 3D-модели)")
         btn_step.clicked.connect(lambda: self.execute(self.export_step))
 

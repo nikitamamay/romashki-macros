@@ -95,7 +95,8 @@ class FastMirrorMacros(Macros):
         )
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        btn_go = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/fast_mirror.svg")), "")
+        btn_go = QtWidgets.QToolButton()
+        btn_go.setIcon(QtGui.QIcon(get_resource_path("img/macros/fast_mirror.svg")))
         btn_go.clicked.connect(lambda: self.execute(fast_mirror))
         btn_go.setToolTip("Создать зеркальный массив выбранных тел\nотносительно выбранной плоскости")
 

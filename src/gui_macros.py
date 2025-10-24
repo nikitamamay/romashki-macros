@@ -27,7 +27,7 @@ class Macros(QtCore.QObject):
     def set_parent_widget(self, widget: QtWidgets.QWidget) -> None:
         self._parent_widget = widget
 
-    def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
+    def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget | QtWidgets.QAction]:
         return {}
 
     def settings_widget(self) -> QtWidgets.QWidget:
@@ -89,8 +89,9 @@ class MacrosSingleCommand(Macros):
         self._icon_path = icon_path
         self._toolbar_button_tooltip = tooltip
 
-    def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        btn = QtWidgets.QPushButton(QtGui.QIcon(self._icon_path), "")
+    def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget | QtWidgets.QAction]:
+        btn = QtWidgets.QToolButton()
+        btn.setIcon(QtGui.QIcon(self._icon_path))
         btn.setToolTip(self._toolbar_button_tooltip)
         btn.clicked.connect(lambda: self.execute(self.execute_macros))
         return {

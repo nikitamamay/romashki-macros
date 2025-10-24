@@ -365,11 +365,13 @@ class BulkRenameMacros(Macros):
         self._parents = set()
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
-        btn_rename = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/bulk_rename.svg")), "")
+        btn_rename = QtWidgets.QToolButton()
+        btn_rename.setIcon(QtGui.QIcon(get_resource_path("img/macros/bulk_rename.svg")))
         btn_rename.clicked.connect(self._rename)
         btn_rename.setToolTip("Переименовать и переобозначить компоненты")
 
-        btn_replace_paths = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/bulk_replace_paths.svg")), "")
+        btn_replace_paths = QtWidgets.QToolButton()
+        btn_replace_paths.setIcon(QtGui.QIcon(get_resource_path("img/macros/bulk_replace_paths.svg")))
         btn_replace_paths.clicked.connect(self._replace_paths)
         btn_replace_paths.setToolTip("Заменить пути к файлам в папке проекта")
 

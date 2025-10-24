@@ -484,26 +484,20 @@ class MacrosFastParts(Macros):
         return w
 
     def toolbar_widgets(self):
-        btn_fast_parts = QtWidgets.QPushButton(
-            QtGui.QIcon(get_resource_path("img/macros/fast_parts_work_to_out.svg")),
-            ""
-        )
+        btn_fast_parts = QtWidgets.QToolButton()
+        btn_fast_parts.setIcon(QtGui.QIcon(get_resource_path("img/macros/fast_parts_work_to_out.svg")))
         btn_fast_parts.setToolTip("Создать out-детали из выбранных тел")
         btn_fast_parts.clicked.connect(self._create_out_parts)
 
 
-        btn_create_fast_part = QtWidgets.QPushButton(
-            QtGui.QIcon(get_resource_path("img/macros/fast_part_single.svg")),
-            ""
-        )
+        btn_create_fast_part = QtWidgets.QToolButton()
+        btn_create_fast_part.setIcon(QtGui.QIcon(get_resource_path("img/macros/fast_part_single.svg")))
         btn_create_fast_part.setToolTip("Создать out-модель с компоновочной геометрией и вставить её в сборку")
         btn_create_fast_part.clicked.connect(self._create_single_out_part)
 
 
-        btn_orient = QtWidgets.QPushButton(
-            QtGui.QIcon(get_resource_path("img/macros/orient.svg")),
-            ""
-        )
+        btn_orient = QtWidgets.QToolButton()
+        btn_orient.setIcon(QtGui.QIcon(get_resource_path("img/macros/orient.svg")))
         btn_orient.setToolTip(
             "Ориентировать выбранные компоненты\n"
             "параллельно осям АСК сборки"
@@ -511,10 +505,8 @@ class MacrosFastParts(Macros):
         btn_orient.clicked.connect(lambda: self.execute(orient_part_K5))
 
 
-        btn_insert_parts_from_lg = QtWidgets.QPushButton(
-            QtGui.QIcon(get_resource_path("img/macros/insert_parts_from_lg.svg")),
-            ""
-        )
+        btn_insert_parts_from_lg = QtWidgets.QToolButton()
+        btn_insert_parts_from_lg.setIcon(QtGui.QIcon(get_resource_path("img/macros/insert_parts_from_lg.svg")))
         btn_insert_parts_from_lg.setToolTip(
             "Вставить выбранные компоненты\n"
             "компоновочной геометрии в текущую сборку")

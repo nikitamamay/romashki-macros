@@ -335,7 +335,8 @@ class MacrosStamp(Macros):
                 self._config["current_template"] = i
                 config.save_delayed()
 
-        btn_stamp_current_date = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/stamp_date.svg")), "")
+        btn_stamp_current_date = QtWidgets.QToolButton()
+        btn_stamp_current_date.setIcon(QtGui.QIcon(get_resource_path("img/macros/stamp_date.svg")))
         btn_stamp_current_date.clicked.connect(self.fill_razrabotal_current_date)
         btn_stamp_current_date.setToolTip("Заполнить текущую дату в строке \"Разработал\"")
 
@@ -351,7 +352,8 @@ class MacrosStamp(Macros):
         cmbx_stamp_template.setToolTip("Выбор шаблона заполнения основной надписи")
         cmbx_stamp_template.currentIndexChanged.connect(_select_current_template)
 
-        btn_stamp = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/stamp_go.svg")), "")
+        btn_stamp = QtWidgets.QToolButton()
+        btn_stamp.setIcon(QtGui.QIcon(get_resource_path("img/macros/stamp_go.svg")))
         btn_stamp.clicked.connect(self.fill_stamp_template)
         btn_stamp.setToolTip("Заполнить основную надпись по шаблону")
 
