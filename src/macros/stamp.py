@@ -424,14 +424,11 @@ class MacrosStamp(Macros):
         )
         lbl_desc.setWordWrap(True)
 
-        font = QtGui.QFont("Monospace")
-        font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
-
         lbl_result = QtWidgets.QLabel()
-        lbl_result.setFont(font)
+        lbl_result.setFont(gui_widgets.get_monospace_font())
 
         le_format = QtWidgets.QLineEdit(self._config["date_format"])
-        le_format.setFont(font)
+        le_format.setFont(gui_widgets.get_monospace_font())
         le_format.textChanged.connect(lambda: _apply_datetime_format())
 
         _apply_datetime_format(to_save=False)

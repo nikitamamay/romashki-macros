@@ -121,9 +121,7 @@ class MaterialInputWidget(QtWidgets.QWidget):
         self._lbl_str = QtWidgets.QLabel()  # FIXME сделать ElidedLabel
 
         self._le_raw = QtWidgets.QLineEdit()
-        font = QtGui.QFont("Monospace")
-        font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
-        self._le_raw.setFont(font)
+        self._le_raw.setFont(gui_widgets.get_monospace_font())
         self._le_raw.textEdited.connect(self.raw_updated)
         self._le_raw.textEdited.connect(lambda: self.data_edited.emit())
 

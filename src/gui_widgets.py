@@ -26,6 +26,21 @@ def move_to_screen_center(widget: QtWidgets.QWidget) -> None:
         int(s_size.height() / 2 - widget.height() / 2)
     )
 
+def get_icon_from_color(color: int, size: int = 16) -> QtGui.QIcon:
+    p = QtGui.QPixmap(size, size)
+    painter = QtGui.QPainter(p)
+    painter.setBrush(QtGui.QColor(color))
+    painter.setPen(QtGui.QColorConstants.Black)
+    painter.drawRect(0, 0, size - 1, size - 1)
+    painter.end()
+    return QtGui.QIcon(p)
+
+def get_monospace_font() -> QtGui.QFont:
+    font = QtGui.QFont()
+    font.setFamilies(["Liberation Mono", "Consolas", "Courier New", "monospace"])
+    font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+    return font
+
 
 class LabelImage(QtWidgets.QLabel):
     def __init__(self, path: str, parent = None):

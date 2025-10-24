@@ -11,8 +11,11 @@ from src import config
 
 
 class Macros(QtCore.QObject):
-    settings_requested = QtCore.pyqtSignal(str)  # macros_codename
-    toolbar_update_requested = QtCore.pyqtSignal(bool)  # is_immediate
+    settings_requested = QtCore.pyqtSignal(str)
+    """Signature: `toolbar_update_requested(macros_codename: str)` """
+
+    toolbar_update_requested = QtCore.pyqtSignal(bool)
+    """Signature: `toolbar_update_requested(is_immediate: bool)` """
 
     def __init__(self, code_name: str, full_name: str) -> None:
         super().__init__()

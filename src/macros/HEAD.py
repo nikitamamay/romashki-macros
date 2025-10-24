@@ -108,12 +108,18 @@ def get_document_type(doc: KAPI7.IKompasDocument) -> int:
 
 
 def color_traditional_to_kompas(color_traditional: int) -> int:
+    """
+    Преобразование цвета из традиционного формата `0xRRGGBB` в формат Компаса `0xBBGGRR`.
+    """
     r = (color_traditional & 0xff0000) >> 16
     g = (color_traditional & 0x00ff00) >> 8
     b = color_traditional & 0x0000ff
     return (b << 16) | (g << 8) | r
 
 def color_kompas_to_traditional(color_kompas: int) -> int:
+    """
+    Преобразование цвета из формата Компаса `0xBBGGRR` в традиционный формат `0xRRGGBB`.
+    """
     r = color_kompas & 0x0000ff
     g = (color_kompas & 0x00ff00) >> 8
     b = (color_kompas & 0xff0000) >> 16
