@@ -55,6 +55,10 @@ FASTDXF_PROJECTION_NAME = "FAST_DXF_PROJECTION"
 FASTDXF_DWG_VIEW_NAME = "DXF"
 MAIN_PROJECTION_NAME = "Главный вид"
 
+TEMPLATE_KEYWORD_NAME = "$$$name$$$"
+TEMPLATE_KEYWORD_MARKING = "$$$marking$$$"
+TEMPLATE_KEYWORD_THICKNESS = "$$$thickness$$$"
+
 
 _remembered_path: str = ""
 
@@ -145,21 +149,28 @@ def get_part_geometry_thickness(part: KAPI7.IPart7) -> float:
 
 
 
-def _get_dxf_path(directory: str, thickness: float, marking: str, name: str) -> str:
+def get_dxf_path(filename_template: str, directory: str, thickness: float, marking: str, name: str) -> str:
     str_thickness = math_utils.round_tail_str(thickness)
     str_thickness = str_thickness.replace(".", ",")
-    path = os.path.normpath(f"{directory}/S={str_thickness} {f'{marking} {name}'.strip()}.dxf")
+
+    basename = filename_template \
+        .replace(TEMPLATE_KEYWORD_MARKING, marking) \
+        .replace(TEMPLATE_KEYWORD_NAME, name) \
+        .replace(TEMPLATE_KEYWORD_THICKNESS, str_thickness) \
+        .strip()
+
+    path = os.path.normpath(os.path.join(directory, basename))
     return path
 
-def get_dxf_path_from_3d(part: KAPI7.IPart7) -> str:
+def get_dxf_path_from_3d(part: KAPI7.IPart7, filename_template: str) -> str:
     d = os.path.dirname(part.FileName)
     t = get_part_geometry_thickness(part)
     m = part.Marking
     n = part.Name
-    return _get_dxf_path(d, t, m, n)
+    return get_dxf_path(filename_template, d, t, m, n)
 
 
-def get_dxf_path_from_2d(doc_dwg: KAPI7.IKompasDocument2D, view_dxf: KAPI7.IView) -> str:
+def get_dxf_path_from_2d(doc_dwg: KAPI7.IKompasDocument2D, view_dxf: KAPI7.IView, filename_template: str) -> str:
     """
     Возвращает имя DXF-файла при создании DXF-фрагмента из чертежа:
 
@@ -179,7 +190,7 @@ def get_dxf_path_from_2d(doc_dwg: KAPI7.IKompasDocument2D, view_dxf: KAPI7.IView
         print(1, filepath)
         if not (filepath == "" or filepath is None):
             doc, part = open_part(filepath, is_hidden=True)
-            return get_dxf_path_from_3d(part)
+            return get_dxf_path_from_3d(part, filename_template)
 
         # иначе - если view_dxf - неассоциативный вид - проверяются все виды в чертеже...
 
@@ -209,23 +220,23 @@ def get_dxf_path_from_2d(doc_dwg: KAPI7.IKompasDocument2D, view_dxf: KAPI7.IView
         # то генерируется имя из свойств 3D-модели:
 
         doc, part = open_part(filepath, is_hidden=True)
-        return get_dxf_path_from_3d(part)
+        return get_dxf_path_from_3d(part, filename_template)
 
     # если всё плохо - имя DXF-файла генерируется из имени файла чертежа
     except:
         path = doc_dwg.PathName
         d, base = os.path.split(path)
         n, ext = os.path.splitext(base)
-        return _get_dxf_path(d, 0, "", n)
+        return get_dxf_path(filename_template, d, 0, "", n)
 
 
-def create_DXF_from_part(filepath: str = "", do_close_afterall: bool = True):
+def create_DXF_from_part(filename_template: str, filepath: str = "", do_close_afterall: bool = True):
     doc5, part5 = open_part_K5(filepath, True)
     if not check_view_projection_K5(doc5):
         raise Exception(f"В модели не создана ориентация \"{FASTDXF_PROJECTION_NAME}\"")
 
     doc_part, part = open_part(filepath)
-    dxf_path = get_dxf_path_from_3d(part)
+    dxf_path = get_dxf_path_from_3d(part, filename_template)
     remember_path(dxf_path)
 
     doc_dwg: KAPI7.IKompasDocument2D = _create_drawing_from_part(doc_part.PathName)
@@ -239,7 +250,7 @@ def create_DXF_from_part(filepath: str = "", do_close_afterall: bool = True):
     # остается открытым Фрагмент с контуром для редактирования - например, убрать резьбы/фаски
 
 
-def create_DXF_from_dwg(do_rename_view: bool = False):
+def create_DXF_from_dwg(filename_template: str, do_rename_view: bool = False):
     doc_dwg: KAPI7.IKompasDocument2D = open_doc2d("")
 
     view_dwg: KAPI7.IView = get_dxf_view(doc_dwg, True)
@@ -257,7 +268,7 @@ def create_DXF_from_dwg(do_rename_view: bool = False):
         else:
             print(f"Не удалось переименовать вид '{old_name}' в '{FASTDXF_DWG_VIEW_NAME}'.")
 
-    dxf_path = get_dxf_path_from_2d(doc_dwg, view_dwg)
+    dxf_path = get_dxf_path_from_2d(doc_dwg, view_dwg, filename_template)
     remember_path(dxf_path)
 
     doc_fragm: KAPI7.IKompasDocument2D = create_dxf_from_dwg_view(view_dwg)
@@ -478,21 +489,59 @@ class MacrosFastDXF(Macros):
         except:
             self._config["do_rename_selected_view_to_DXF"] = False
 
+        try:
+            assert isinstance(self._config["filename_template"], str)
+        except:
+            self._config["filename_template"] = f"S={TEMPLATE_KEYWORD_THICKNESS} {TEMPLATE_KEYWORD_MARKING} {TEMPLATE_KEYWORD_NAME}"
+
+
     def settings_widget(self) -> QtWidgets.QWidget:
         def _apply_changes():
             self._config["do_rename_selected_view_to_DXF"] = cb_do_rename_view_in_dwg.isChecked()
+            self._config["filename_template"] = le_filename_fmt.text()
+            _show_filename_example()
             config.save_delayed()
+
+        def _show_filename_example():
+            fp = get_dxf_path(self._config["filename_template"], "./", 2.5, "АБВГ.000.001", "Пластина")
+            lbl_filename_example.setText(fp)
+
+        def _context_menu_event(le: QtWidgets.QLineEdit, event: QtGui.QContextMenuEvent) -> None:
+            menu = le.createStandardContextMenu()
+            menu.addSeparator()
+            menu.addAction("Вставить шаблон: Наименование", lambda: le.insert(TEMPLATE_KEYWORD_NAME))
+            menu.addAction("Вставить шаблон: Обозначение", lambda: le.insert(TEMPLATE_KEYWORD_MARKING))
+            menu.addAction("Вставить шаблон: Толщина", lambda: le.insert(TEMPLATE_KEYWORD_THICKNESS))
+            menu.exec(event.globalPos())
+            event.accept()
 
         w = QtWidgets.QWidget()
         l = QtWidgets.QGridLayout()
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         w.setLayout(l)
 
+        le_filename_fmt = QtWidgets.QLineEdit(self._config["filename_template"])
+        le_filename_fmt.contextMenuEvent = lambda ev: _context_menu_event(le_filename_fmt, ev)
+        le_filename_fmt.setFont(gui_widgets.get_monospace_font())
+        le_filename_fmt.setToolTip("Нажмите правой кнопкой мыши для дополнительных опций")
+        le_filename_fmt.textEdited.connect(_apply_changes)
+
+        lbl_filename_example = QtWidgets.QLabel()
+        lbl_filename_example.setFont(gui_widgets.get_monospace_font())
+        lbl_filename_example.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+        lbl_filename_example.setToolTip("Пример имени файла")
+
         cb_do_rename_view_in_dwg = QtWidgets.QCheckBox(f"При создании DXF-фрагмента из 2D-чертежа присваивать выбранному виду название '{FASTDXF_DWG_VIEW_NAME}'")
         cb_do_rename_view_in_dwg.setChecked(self._config["do_rename_selected_view_to_DXF"])
         cb_do_rename_view_in_dwg.stateChanged.connect(_apply_changes)
 
-        l.addWidget(cb_do_rename_view_in_dwg, 0, 0, 1, 1)
+        l.addWidget(QtWidgets.QLabel("Шаблон имени файла: "), 0, 0, 1, 1)
+        l.addWidget(le_filename_fmt, 0, 1, 1, 1)
+        l.addWidget(lbl_filename_example, 1, 1, 1, 1)
+        l.addWidget(cb_do_rename_view_in_dwg, 2, 0, 1, 2)
+
+        _show_filename_example()
+
         return w
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
@@ -504,12 +553,12 @@ class MacrosFastDXF(Macros):
         btn_dxf_from_part = QtWidgets.QToolButton()
         btn_dxf_from_part.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_from_part.svg")))
         btn_dxf_from_part.setToolTip("Создать DXF для открытой детали")
-        btn_dxf_from_part.clicked.connect(lambda: self.execute(create_DXF_from_part))
+        btn_dxf_from_part.clicked.connect(lambda: self.execute(lambda: create_DXF_from_part(self._config["filename_template"])))
 
         btn_dxf_from_dwg = QtWidgets.QToolButton()
         btn_dxf_from_dwg.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_from_dwg.svg")))
         btn_dxf_from_dwg.setToolTip(f"Создать DXF из вида \"{FASTDXF_DWG_VIEW_NAME}\" в открытом чертеже")
-        btn_dxf_from_dwg.clicked.connect(lambda: self.execute(lambda: create_DXF_from_dwg(self._config["do_rename_selected_view_to_DXF"])))
+        btn_dxf_from_dwg.clicked.connect(lambda: self.execute(lambda: create_DXF_from_dwg(self._config["filename_template"], self._config["do_rename_selected_view_to_DXF"])))
 
         btn_dxf_projection = QtWidgets.QToolButton()
         btn_dxf_projection.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_part_orientation.svg")))
