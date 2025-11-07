@@ -135,7 +135,7 @@ def get_part_geometry_thickness(part: KAPI7.IPart7) -> float:
         print(f"Толщина берётся из свойств листовых тел.", end=" ")
         for sm_obj in sheet_metal_objects:
             thickness += sm_obj.Thickness
-        thickness /= count
+        thickness /= sm_objs_count
     else:
         print(f"Толщина рассчитывается исходя из габаритов модели.", end=" ")
         dx, dy, dz = get_dimensions(part)
@@ -158,39 +158,65 @@ def get_dxf_path_from_3d(part: KAPI7.IPart7) -> str:
     n = part.Name
     return _get_dxf_path(d, t, m, n)
 
-def get_dxf_path_from_2d(doc_dwg: KAPI7.IKompasDocument2D) -> str:
-    vlm: KAPI7.IViewsAndLayersManager = doc_dwg.ViewsAndLayersManager
-    views: KAPI7.IViews = vlm.Views
 
-    filepath = ""
+def get_dxf_path_from_2d(doc_dwg: KAPI7.IKompasDocument2D, view_dxf: KAPI7.IView) -> str:
+    """
+    Возвращает имя DXF-файла при создании DXF-фрагмента из чертежа:
+
+    * если вид `view_dxf` ассоциативный (вид с модели), генерирует имя DXF-файла из свойств модели;
+    * проверяет все виды чертежа, и если они ссылаются на одну и ту же модель, генерирует имя DXF-файла из свойств этой модели;
+    * в противном случае генерирует имя DXF-файла из имени файла чертежа.
+    """
+    filepath: str = ""
+
     try:
-        view_dxf: KAPI7.IView = get_view_by_name(doc_dwg, FASTDXF_DWG_VIEW_NAME)
+        # если view_dxf - вид с модели (т.е. у него есть aview_dxf.SourceFileName)
+        # то генерируется имя из свойств 3D-модели:
+
+        print(0, view_dxf)
         aview_dxf = KAPI7.IAssociationView(view_dxf)
         filepath = aview_dxf.SourceFileName
-    except:
-        pass
+        print(1, filepath)
+        if not (filepath == "" or filepath is None):
+            doc, part = open_part(filepath, is_hidden=True)
+            return get_dxf_path_from_3d(part)
 
-    if filepath == "":
+        # иначе - если view_dxf - неассоциативный вид - проверяются все виды в чертеже...
+
+        vlm: KAPI7.IViewsAndLayersManager = doc_dwg.ViewsAndLayersManager
+        views: KAPI7.IViews = vlm.Views
+
         for i in range(views.Count):
             view: KAPI7.IView = views.View(i)
             try:
                 aview = KAPI7.IAssociationView(view)
-                filepath = aview.SourceFileName
-                break
+                fp = aview.SourceFileName
+                if fp == "":
+                    continue
             except:
-                pass
+                continue
 
-    try:
-        if filepath == "": raise
+            if filepath == "":
+                filepath = fp
+            else:
+                if filepath != fp:
+                    raise  # ошибка: виды на чертеже ссылаются на разные модели
+
+        if filepath == "":
+            raise  # ошибка: на чертеже нет вообще ни одного вида с модели
+
+        # если в чертеже есть виды с модели и они все ссылаются на одну модель
+        # то генерируется имя из свойств 3D-модели:
+
         doc, part = open_part(filepath, is_hidden=True)
         return get_dxf_path_from_3d(part)
+
+    # если всё плохо - имя DXF-файла генерируется из имени файла чертежа
     except:
         path = doc_dwg.PathName
         d, base = os.path.split(path)
         n, ext = os.path.splitext(base)
         return _get_dxf_path(d, 0, "", n)
-
-
 
 
 def create_DXF_from_part(filepath: str = "", do_close_afterall: bool = True):
@@ -203,25 +229,38 @@ def create_DXF_from_part(filepath: str = "", do_close_afterall: bool = True):
     remember_path(dxf_path)
 
     doc_dwg: KAPI7.IKompasDocument2D = _create_drawing_from_part(doc_part.PathName)
-    doc_fragm: KAPI7.IKompasDocument2D = create_dxf_from_drawing(doc_dwg)
+
+    view_dwg: KAPI7.IView = get_dxf_view(doc_dwg, False)
+
+    doc_fragm: KAPI7.IKompasDocument2D = create_dxf_from_dwg_view(view_dwg)
 
     if do_close_afterall:
         doc_dwg.Close(0)
     # остается открытым Фрагмент с контуром для редактирования - например, убрать резьбы/фаски
 
 
-def create_DXF_from_dwg(do_close_afterall: bool = True):
+def create_DXF_from_dwg(do_rename_view: bool = False):
     doc_dwg: KAPI7.IKompasDocument2D = open_doc2d("")
 
-    try:
-        get_view_by_name(doc_dwg, FASTDXF_DWG_VIEW_NAME)
-    except:
-        rename_selected_view(doc_dwg, FASTDXF_DWG_VIEW_NAME, True)
+    view_dwg: KAPI7.IView = get_dxf_view(doc_dwg, True)
 
-    dxf_path = get_dxf_path_from_2d(doc_dwg)
+    if do_rename_view and view_dwg.Name != FASTDXF_DWG_VIEW_NAME:
+        another_view = get_view_by_name(doc_dwg, FASTDXF_DWG_VIEW_NAME, False)
+        if not (another_view is None) and not (another_view is view_dwg):
+            raise Exception(f"Уже существует вид '{FASTDXF_DWG_VIEW_NAME}', а выбран вид '{view_dwg.Name}'")
+
+        old_name = view_dwg.Name
+        view_dwg.Name = FASTDXF_DWG_VIEW_NAME
+        is_renamed: bool = view_dwg.Update()
+        if is_renamed:
+            print(f"Вид '{old_name}' переименован в '{FASTDXF_DWG_VIEW_NAME}'.")
+        else:
+            print(f"Не удалось переименовать вид '{old_name}' в '{FASTDXF_DWG_VIEW_NAME}'.")
+
+    dxf_path = get_dxf_path_from_2d(doc_dwg, view_dwg)
     remember_path(dxf_path)
 
-    doc_fragm: KAPI7.IKompasDocument2D = create_dxf_from_drawing(doc_dwg)
+    doc_fragm: KAPI7.IKompasDocument2D = create_dxf_from_dwg_view(view_dwg)
     # остается открытым Фрагмент с контуром для редактирования - например, убрать резьбы/фаски
 
 
@@ -306,10 +345,19 @@ def _create_drawing_from_part(part_filename: str) -> KAPI7.IKompasDocument2D:
 
     return doc_dwg
 
+def get_dxf_view(doc_dwg: KAPI7.IKompasDocument2D, use_selected_view: bool = True) -> KAPI7.IView:
+    if use_selected_view:
+        doc_dwg2d1 = KAPI7.IKompasDocument2D1(doc_dwg)
+        selected_views: list[KAPI7.IView] = get_selected(doc_dwg2d1, (KAPI7.IView, KAPI7.IAssociationView))
+        if len(selected_views) != 0:
+            return selected_views[0]
+    return get_view_by_name(doc_dwg, FASTDXF_DWG_VIEW_NAME)
 
-def create_dxf_from_drawing(doc_dwg: KAPI7.IKompasDocument2D) -> KAPI7.IKompasDocument2D:
+
+def create_dxf_from_dwg_view(view_dwg: KAPI7.IView) -> KAPI7.IKompasDocument2D:
     """ Копирование геометрии из вида чертежа во фрагмент. """
-    view_dwg: KAPI7.IView = get_view_by_name(doc_dwg, FASTDXF_DWG_VIEW_NAME)
+
+    print(f"Используется вид чертежа '{view_dwg.Name}'")
 
     app = get_app7()
     doc_fragm: KAPI7.IKompasDocument2D = create_document2d(app, DocumentTypeEnum.ksDocumentFragment)
@@ -424,31 +472,54 @@ class MacrosFastDXF(Macros):
     def __init__(self) -> None:
         super().__init__("fast_dxf", "Быстрое создание DXF")
 
+    def check_config(self) -> None:
+        try:
+            assert isinstance(self._config["do_rename_selected_view_to_DXF"], bool)
+        except:
+            self._config["do_rename_selected_view_to_DXF"] = False
+
+    def settings_widget(self) -> QtWidgets.QWidget:
+        def _apply_changes():
+            self._config["do_rename_selected_view_to_DXF"] = cb_do_rename_view_in_dwg.isChecked()
+            config.save_delayed()
+
+        w = QtWidgets.QWidget()
+        l = QtWidgets.QGridLayout()
+        l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        w.setLayout(l)
+
+        cb_do_rename_view_in_dwg = QtWidgets.QCheckBox(f"При создании DXF-фрагмента из 2D-чертежа присваивать выбранному виду название '{FASTDXF_DWG_VIEW_NAME}'")
+        cb_do_rename_view_in_dwg.setChecked(self._config["do_rename_selected_view_to_DXF"])
+        cb_do_rename_view_in_dwg.stateChanged.connect(_apply_changes)
+
+        l.addWidget(cb_do_rename_view_in_dwg, 0, 0, 1, 1)
+        return w
+
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         btn_main_projection = QtWidgets.QToolButton()
         btn_main_projection.setIcon(QtGui.QIcon(get_resource_path("img/macros/main_projection.svg")))
         btn_main_projection.setToolTip("Создать/обновить ориентацию главного вида в открытой модели")
-        btn_main_projection.clicked.connect(lambda: self.execute(self.create_main_projection))
+        btn_main_projection.clicked.connect(lambda: self.execute(self._create_main_projection))
 
         btn_dxf_from_part = QtWidgets.QToolButton()
         btn_dxf_from_part.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_from_part.svg")))
         btn_dxf_from_part.setToolTip("Создать DXF для открытой детали")
-        btn_dxf_from_part.clicked.connect(lambda: self.execute(self.create_dxf_from_part))
+        btn_dxf_from_part.clicked.connect(lambda: self.execute(create_DXF_from_part))
 
         btn_dxf_from_dwg = QtWidgets.QToolButton()
         btn_dxf_from_dwg.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_from_dwg.svg")))
         btn_dxf_from_dwg.setToolTip(f"Создать DXF из вида \"{FASTDXF_DWG_VIEW_NAME}\" в открытом чертеже")
-        btn_dxf_from_dwg.clicked.connect(lambda: self.execute(self.create_dxf_from_dwg))
+        btn_dxf_from_dwg.clicked.connect(lambda: self.execute(lambda: create_DXF_from_dwg(self._config["do_rename_selected_view_to_DXF"])))
 
         btn_dxf_projection = QtWidgets.QToolButton()
         btn_dxf_projection.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_part_orientation.svg")))
         btn_dxf_projection.setToolTip(f"Создать/обновить ориентацию \"{FASTDXF_PROJECTION_NAME}\" в открытой модели")
-        btn_dxf_projection.clicked.connect(lambda: self.execute(self.update_viewprojection))
+        btn_dxf_projection.clicked.connect(lambda: self.execute(self._update_viewprojection))
 
         btn_save_fragm = QtWidgets.QToolButton()
         btn_save_fragm.setIcon(QtGui.QIcon(get_resource_path("img/macros/dxf_save_fragm.svg")))
         btn_save_fragm.setToolTip(f"Сохранить фрагмент как DXF")
-        btn_save_fragm.clicked.connect(lambda: self.execute(self.save_fragm))
+        btn_save_fragm.clicked.connect(lambda: self.execute(self._save_fragm))
 
         return {
             "обновить ориентацию главного вида в модели": btn_main_projection,
@@ -458,21 +529,15 @@ class MacrosFastDXF(Macros):
             "сохранить текущий фрагмент в DXF": btn_save_fragm,
         }
 
-    def create_dxf_from_part(self) -> None:
-        create_DXF_from_part("")
-
-    def create_dxf_from_dwg(self) -> None:
-        create_DXF_from_dwg()
-
-    def create_main_projection(self) -> None:
+    def _create_main_projection(self) -> None:
         doc, part = open_part_K5()
         create_current_view_projection_K5(doc, MAIN_PROJECTION_NAME, True)
 
-    def update_viewprojection(self) -> None:
+    def _update_viewprojection(self) -> None:
         doc, part = open_part_K5()
         create_current_view_projection_K5(doc, FASTDXF_PROJECTION_NAME, True)
 
-    def save_fragm(self) -> None:
+    def _save_fragm(self) -> None:
         QtWidgets.qApp.restoreOverrideCursor()
         path: str = get_path()
         ext_dxf = f"DXF (*.dxf)"

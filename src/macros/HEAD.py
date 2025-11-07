@@ -131,12 +131,12 @@ def pretty_print_color(color: int) -> str:
 
 
 
-def get_view_by_name(doc: KAPI7.IKompasDocument2D, view_name: str) -> KAPI7.IView:
+def get_view_by_name(doc: KAPI7.IKompasDocument2D, view_name: str, do_raise_exception: bool = True) -> KAPI7.IView:
     assert get_document_type(doc) == DocumentTypeEnum.type_2D
     vlm: KAPI7.IViewsAndLayersManager = doc.ViewsAndLayersManager
     views: KAPI7.IViews = vlm.Views
     view: KAPI7.IView = views.View(view_name)
-    if view is None:
+    if do_raise_exception and view is None:
         raise Exception(f"Не найден вид с названием \"{view_name}\"")
     return view
 
