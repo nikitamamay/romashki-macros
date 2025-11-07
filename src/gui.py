@@ -228,11 +228,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def contextMenuEvent(self, event: QtGui.QContextMenuEvent | None) -> None:
         if self.centralWidget().geometry().contains(event.pos()):
-            menu = QtWidgets.QMenu("Контекстное меню")
-            menu.addAction(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настройки", lambda: self.show_settings())
-            menu.exec(event.globalPos())
-            event.accept()
+            menu = self.createPopupMenu()
+            if not menu is None:
+                menu.exec(event.globalPos())
+                event.accept()
         return super().contextMenuEvent(event)
+
+    def createPopupMenu(self) -> QtWidgets.QMenu | None:
+        menu = super().createPopupMenu()
+        if not menu is None:
+            menu.addAction(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настройки...", lambda: self.show_settings())
+        return menu
 
     def show_settings(self, macros_code_name: str = "") -> None:
         gui_widgets.move_to_screen_center(self.settings_window)
