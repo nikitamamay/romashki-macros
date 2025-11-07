@@ -48,6 +48,8 @@ from src.resources import get_resource_path
 
 import src.macros.stamp as stamp
 
+import traceback
+
 
 FASTDXF_PROJECTION_NAME = "FAST_DXF_PROJECTION"
 FASTDXF_DWG_VIEW_NAME = "DXF"
@@ -95,15 +97,45 @@ def get_gabarit5(part5: KAPI5.ksPart) -> tuple[float, float, float, float, float
 
 def get_part_geometry_thickness(part: KAPI7.IPart7) -> float:
     smc = KAPI7.ISheetMetalContainer(part)
-    smbs: KAPI7.ISheetMetalBodies = smc.SheetMetalBodies
+
+    sheet_metal_objects: list[KAPI7.ISheetMetalBody | KAPI7.ISheetMetalPlate] = []
+
+    smbs_list: list[KAPI7.ISheetMetalBodies] = [
+        smc.SheetMetalBodies,  # операция "Листовое тело"
+    ]
+
+    try:
+        smbs_list.extend([
+            smc.SheetMetalRuledShells,  # операция "Обечайка" (с Компас v18.1)
+            smc.SheetMetalLinearRuledShells,  # операция "Линейчатая обечайка" (с Компас v18.1)
+        ])
+    except:
+        pass
+
+    for sm_bodies_container in smbs_list:
+        for i in range(sm_bodies_container.Count):
+            sm_body: KAPI7.ISheetMetalBody = sm_bodies_container.SheetMetalBody(i)
+            sheet_metal_objects.append(sm_body)
+
+    try:
+        sm_plates_container: KAPI7.ISheetMetalPlates = smc.SheetMetalPlates  # операция "Пластина" (с Компас v18.1)
+
+        for i in range(sm_plates_container.Count):
+            sm_plate: KAPI7.ISheetMetalPlate = sm_plates_container.SheetMetalBody(i)
+            sheet_metal_objects.append(sm_plate)
+    except:
+        # print("Warning: не удается получить контейнер листовых пластин")
+        pass
+
+    sm_objs_count = len(sheet_metal_objects)
+    print(f"Количество листовых тел в модели: {sm_objs_count}.", end=" ")
+
     thickness: float = 0.0
-    print(f"Количество листовых тел в модели: {smbs.Count}.", end=" ")
-    if smbs.Count > 0:
+    if sm_objs_count > 0:
         print(f"Толщина берётся из свойств листовых тел.", end=" ")
-        for i in range(smbs.Count):
-            smb: KAPI7.ISheetMetalBody = smbs.SheetMetalBody(i)
-            thickness += smb.Thickness
-        thickness /= smbs.Count
+        for sm_obj in sheet_metal_objects:
+            thickness += sm_obj.Thickness
+        thickness /= count
     else:
         print(f"Толщина рассчитывается исходя из габаритов модели.", end=" ")
         dx, dy, dz = get_dimensions(part)
