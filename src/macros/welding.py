@@ -36,8 +36,8 @@
     из выбранных точек.
 Затем выполняется команда макроса. В модели для сварных швов создаются
 *неассоциативные* ломаные линии по выбранным ранее ребрам, создается эскиз
-с окружностью и выполняется кинематическая операция (операция по траектории)
-для создания твердого тела сварного шва.
+с многранником (или окружностью) и выполняется кинематическая операция
+(операция по траектории) для создания твердого тела сварного шва.
 
 
 Макрос реализован как прототип для проверки идеи автоматизированного создания
@@ -71,9 +71,17 @@ class WeldLineSettings:
     """
     Класс настроек алгоритма создания ломаных линий сварных швов.
     """
-    def __init__(self, diameter: float = 10.0, layer: int = -1):
+    def __init__(
+            self,
+            diameter: float = 10.0,
+            layer: int = -1,
+            section_edges_count: int = 8,
+            ) -> None:
         self.diameter: float = diameter
         """диаметр валика твердого тела шва"""
+
+        self.section_edges_count: int = section_edges_count
+        """Количество сторон многоугольника в сечении валика шва. При значении `<= 0` будет использоваться окружность."""
 
         self.step_default: float = diameter * 3
         """длина шага вдоль кривой по-умолчанию"""
@@ -666,7 +674,7 @@ def create_weld_body(
     print(f"Создана плоскость '{plane5_entity.name}'")
     plane: KAPI7.IPlane3DPerpendicularByEdge = transfer_to_7(plane5_entity)
 
-    # создание эскиза с кругом --- сечением шва
+    # создание эскиза с фигурой -- сечением шва
 
     mc = KAPI7.IModelContainer(part)
     sketch: KAPI7.ISketch = mc.Sketchs.Add()
@@ -679,22 +687,27 @@ def create_weld_body(
     doc2d: KAPI7.IFragmentDocument = sketch.BeginEdit()
     view: KAPI7.IView = doc2d.ViewsAndLayersManager.Views.View(0)
     dc: KAPI7.IDrawingContainer = KAPI7.IDrawingContainer(view)
-    circle: KAPI7.ICircle = dc.Circles.Add()
-    circle.Radius = wls.diameter / 2
-    circle.Update()
 
-    sketch5 = transfer_to_K5(sketch)
+    sketch5 = transfer_to_K5(sketch)  # так же нужен для ksBossEvolutionDefinition (см. ниже)
     ref = sketch5.AddProjectionOf(vertex5)
     dg: KAPI7.IDrawingGroup = kompas5.TransferReference(ref, 0)
     point: KAPI7.IPoint = ensure_list(dg.Objects())[0]
+    x, y = point.X, point.Y  # координаты центра сечения валика шва
 
-    do1 = KAPI7.IDrawingObject1(circle)
-    constraint: KAPI7.IParametriticConstraint = do1.NewConstraint()  # ограничение, в общем-то, необязательно
-    constraint.ConstraintType = 11  # ksCMergePoints
-    constraint.Index = 0
-    constraint.Partner = point
-    constraint.PartnerIndex = 0
-    constraint.Create()
+    if wls.section_edges_count <= 0:
+        circle: KAPI7.ICircle = dc.Circles.Add()
+        circle.Radius = wls.diameter / 2
+        circle.Xc = x
+        circle.Yc = y
+        circle.Update()
+    else:
+        rp: KAPI7.IRegularPolygon = dc.RegularPolygons.Add()
+        rp.Count = wls.section_edges_count  # Количество вершин многоугольника
+        rp.Describe = True  # Признак построения по вписанной окружности
+        rp.Radius = wls.diameter / 2
+        rp.Xc = x
+        rp.Yc = y
+        rp.Update()
 
     sketch.EndEdit()
     print(f"Завершено редактирование эскиза '{sketch.Name}'")
@@ -861,6 +874,12 @@ class WeldingMacros(Macros):
             config.save_delayed()
 
         try:
+            assert isinstance(self._config["section_edges_count"], int)
+        except:
+            self._config["section_edges_count"] = 8
+            config.save_delayed()
+
+        try:
             assert isinstance(self._config["weld_specs"], list)
             assert len(self._config["weld_specs"]) > 0
             for spec in self._config["weld_specs"]:
@@ -886,6 +905,7 @@ class WeldingMacros(Macros):
         def _apply_changes() -> None:
             self._config["prefix"] = le_prefix.text()
             self._config["do_create_in_active_document"] = cb_use_active_model.isChecked()
+            self._config["section_edges_count"] = sb_section_edges_count.value()
             config.save_delayed()
 
         def _apply_list_changes() -> None:
@@ -936,6 +956,11 @@ class WeldingMacros(Macros):
         cb_use_active_model.setChecked(self._config["do_create_in_active_document"])
         cb_use_active_model.stateChanged.connect(_apply_changes)
 
+        sb_section_edges_count = QtWidgets.QSpinBox()
+        sb_section_edges_count.setRange(0, 1000)
+        sb_section_edges_count.setValue(self._config["section_edges_count"])
+        sb_section_edges_count.valueChanged.connect(_apply_changes)
+
         le_prefix = QtWidgets.QLineEdit(self._config["prefix"])
         le_prefix.setPlaceholderText(RMWELD)
         le_prefix.textChanged.connect(_apply_changes)
@@ -950,10 +975,20 @@ class WeldingMacros(Macros):
         wsip = WeldSpecInputWidget()
 
         l.addWidget(cb_use_active_model, 0, 0, 1, 2)
-        l.addWidget(QtWidgets.QLabel("Префикс для наименований построений и тел"), 1, 0, 1, 1)
-        l.addWidget(le_prefix, 1, 1, 1, 1)
-        l.addWidget(weld_specs_list, 2, 0, 1, 2)
-        l.addWidget(wsip, 3, 0, 1, 2)
+        l.addWidget(QtWidgets.QLabel("Префикс для наименований построений и тел:"), 1, 0, 1, 1)
+        l.addWidget(le_prefix, 1, 1, 1, 2)
+
+        l.addWidget(QtWidgets.QLabel("Количество сторон многоугольника в сечении шва:"), 2, 0, 1, 1)
+        l.addWidget(sb_section_edges_count, 2, 1, 1, 1)
+        l.addWidget(gui_widgets.ToolTipWidget(
+            "При значении '0' будет использоваться окружность\n"
+            "в качестве сечения валика шва.\n\n"
+            "Рекомендуется использовать 8-гранники\n"
+            "для более корректного проецирования в чертежи."
+            ), 2, 2, 1, 1)
+
+        l.addWidget(weld_specs_list, 3, 0, 1, 3)
+        l.addWidget(wsip, 4, 0, 1, 3)
 
         wsip.data_edited.connect(_weld_spec_data_changed)
         weld_specs_list.selection_changed.connect(_selection_changed)
@@ -1027,26 +1062,17 @@ class WeldingMacros(Macros):
 
     def _create_welds(self) -> None:
         if not self._check_for_weldpart(): return
-        active_spec = self._get_active_spec()
-        name, diameter, layer = active_spec
-
-        wls = WeldLineSettings(diameter, layer)
+        wls = self._get_active_spec()
         create_welds(self._welddoc_path, wls, False, self._config["prefix"])
 
     def _create_welds_lines(self) -> None:
         if not self._check_for_weldpart(): return
-        active_spec = self._get_active_spec()
-        name, diameter, layer = active_spec
-
-        wls = WeldLineSettings(diameter, layer)
+        wls = self._get_active_spec()
         create_welds(self._welddoc_path, wls, True, self._config["prefix"])
 
     def _create_welds_bodies(self) -> None:
         if not self._check_for_weldpart(): return
-        active_spec = self._get_active_spec()
-        name, diameter, layer = active_spec
-
-        wls = WeldLineSettings(diameter, layer)
+        wls = self._get_active_spec()
         find_and_create_weld_bodies(self._welddoc_path, wls, True, self._config["prefix"])
 
     def _change_welddoc_path(self) -> None:
@@ -1064,13 +1090,17 @@ class WeldingMacros(Macros):
         )
         self._welddoc_path = path
 
-    def _get_active_spec(self):
+    def _get_active_spec(self) -> WeldLineSettings:
         if len(self._config["weld_specs"]) == 0:
             self.request_settings()
             raise Exception("Нет ни одного шаблона сварных швов")
+
         if not (0 <= self._config["active_weld_spec"] < len(self._config["weld_specs"])):
             raise Exception(f"Некорректный индекс выбранного шаблона сварного шва: {self._config["active_weld_spec"]}")
-        return self._config["weld_specs"][self._config["active_weld_spec"]]
+
+        name, diameter, layer = self._config["weld_specs"][self._config["active_weld_spec"]]
+        wls = WeldLineSettings(diameter, layer, self._config["section_edges_count"])
+        return wls
 
 
 if __name__ == "__main__":
