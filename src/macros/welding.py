@@ -89,8 +89,8 @@ class WeldLineSettings:
         self.step_min: float = diameter * 0.75
         """минимальная длина шага вдоль кривой"""
 
-        self.max_angle_deviation: float = 45.0  # в градусах
-        """максимальный угол сектора при аппроксимации окружностей, в градусах"""
+        self.max_deviation_from_arc: float = diameter * 0.25
+        """максимальное отклонение ломаной от дуги (длина высоты, опущенной с точки середины дуги на хорду)"""
 
         self.merge_distance: float = diameter * 0.2
         """расстояние между двумя точками, которые следует объединять"""
@@ -145,17 +145,30 @@ def get_line_of_curve(
 
     # кривая
     else:
+        round_function = int
+
+        # если окружность, тогда рекомендуемый шаг = длина хорды с отклонением от точки середины дуги, равным wls.max_deviation_from_arc
         if curve.IsArc() or curve.IsCircle() or curve.IsEllipse():
             if curve.IsEllipse():
                 r = curve.GetCurveParam().minorRadius
             else:
                 r = curve.GetCurveParam().radius
-            step_max = 2 * r * math.sin(math.radians(wls.max_angle_deviation / 2))
-            step_recommended = max(step_max, wls.step_min)
-            # step_recommended = max(min(step_max, wls.step_default), wls.step_min)
+
+            if r > wls.max_deviation_from_arc / 2:
+                step_recommended = max(
+                    math.sqrt(8 * r * wls.max_deviation_from_arc - 4 * wls.max_deviation_from_arc ** 2),
+                    wls.step_min
+                )
+                round_function = math.ceil
+            else:
+                step_recommended = wls.step_min
         else:
             step_recommended = wls.step_default
-        segments_count = max(1, int(curve_length / step_recommended))
+
+        segments_count = max(
+            1 + 2 * int(curve.IsClosed()),
+            round_function(curve_length / step_recommended)
+        )
         step_real = curve_length / segments_count
 
         line.append(_get_point(_get_T_from_length(0)))
@@ -618,11 +631,13 @@ def create_weld_polyline(
     """
     Создает ломаную линию в модели `part` по точкам `line`.
     """
+    assert len(line) >= 2, f"Попытка создать линию по {len(line)} точкам"
+
     agc = KAPI7.IAuxiliaryGeomContainer(part)
     pl: KAPI7.IPolyLine = agc.PolyLines.Add()
 
     # проверка линии шва на замкнутость
-    if are_points_same(line[0], line[-1], wls.merge_distance):
+    if len(line) > 2 and are_points_same(line[0], line[-1], wls.merge_distance):
         pl.Closed = True
         line = line[:-1]
 
@@ -631,14 +646,17 @@ def create_weld_polyline(
         cvp.SetParamVertex(x, y, z, 0)
         cvp.Update()
 
-    pl.Update()
+    is_ok = pl.Update()
     pl.Hidden = do_hide
     pl.Name = (prefix + " " + pl.Name).strip()
     # mo1 = KAPI7.IModelObject1(pl)
     # if wls.layer != -1:
     #     mo1.LayerNumber = wls.layer
-    pl.Update()
-    print(f"Создана ломаная линия '{pl.Name}'")  # на слое {mo1.LayerNumber}")
+    is_ok = pl.Update()
+    if is_ok:
+        print(f"Создана ломаная линия '{pl.Name}'")  # на слое {mo1.LayerNumber}")
+    else:
+        raise Exception(f"Не удалось создать ломаную линию по {len(line)} точкам: {line}")
     return pl
 
 
@@ -668,10 +686,13 @@ def create_weld_body(
     plane5.SetEdge(edge5)
     plane5.SetPoint(vertex5)
     plane5_entity.hidden = True
-    plane5_entity.Update()
+    is_ok = plane5_entity.Update()
     plane5_entity.name = (prefix + " " + plane5_entity.name).strip()
-    plane5_entity.Update()
-    print(f"Создана плоскость '{plane5_entity.name}'")
+    is_ok = plane5_entity.Update()
+    if is_ok:
+        print(f"Создана плоскость '{plane5_entity.name}'")
+    else:
+        raise Exception(f"Не удалось создать плоскость по ломаной '{polyline5.name}'")
     plane: KAPI7.IPlane3DPerpendicularByEdge = transfer_to_7(plane5_entity)
 
     # создание эскиза с фигурой -- сечением шва
@@ -679,10 +700,13 @@ def create_weld_body(
     mc = KAPI7.IModelContainer(part)
     sketch: KAPI7.ISketch = mc.Sketchs.Add()
     sketch.Plane = plane
-    sketch.Update()
+    is_ok = sketch.Update()
     sketch.Name = (prefix + " " + sketch.Name).strip()
-    print(f"Создан эскиз '{sketch.Name}'")
-    sketch.Update()
+    is_ok = sketch.Update()
+    if is_ok:
+        print(f"Создан эскиз '{sketch.Name}'")
+    else:
+        raise Exception(f"Не удалось создать эскиз на плоскости '{plane5_entity.name}'")
 
     doc2d: KAPI7.IFragmentDocument = sketch.BeginEdit()
     view: KAPI7.IView = doc2d.ViewsAndLayersManager.Views.View(0)
@@ -720,10 +744,13 @@ def create_weld_body(
     base_evolution.ChooseBodies().ChooseBodiesType = 0  # новое тело
     ec: KAPI5.ksEntityCollection = base_evolution.PathPartArray()
     ec.Add(polyline5)
-    evolution_e.Update()
+    is_ok = evolution_e.Update()
     evolution_e.name = (prefix + " " + evolution_e.name).strip()
-    print(f"Создано вытягивание по траектории '{evolution_e.name}'")
-    evolution_e.Update()
+    is_ok = evolution_e.Update()
+    if is_ok:
+        print(f"Создано вытягивание по траектории '{evolution_e.name}'")
+    else:
+        raise Exception(f"Не удалось создать вытягивание по траектории по ломаной линии '{polyline5.name}' с эскизом '{sketch.Name}'")
 
     # переименование тела от операции вытягивания и задание слоя и цвета
 
@@ -736,8 +763,11 @@ def create_weld_body(
             b7.LayerNumber = wls.layer
         cp = KAPI7.IColorParam7(b7)
         cp.UseColor = 3  # цвет слоя
-        b7.Update()
-        print(f"Переименовано тело шва '{b7.Name}' на слое {b7.LayerNumber}.")
+        is_ok = b7.Update()
+        if is_ok:
+            print(f"Переименовано тело шва '{b7.Name}' на слое {b7.LayerNumber}.")
+        else:
+            print(f"Не удалось изменить параметры твердого тела шва '{b7.Name}'")
 
 
 def find_weld_polylines_without_bodies(
