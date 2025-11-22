@@ -4,7 +4,7 @@
 
 """
 
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets, QtSvg
 
 from src.resources import get_resource_path
 
@@ -54,6 +54,16 @@ class LabelImage(QtWidgets.QLabel):
         painter = QtGui.QPainter(self)
         painter.translate(self.width()/2 - p.width()/2, self.height()/2 - p.height()/2)
         painter.drawPixmap(0, 0, p)
+
+
+class ToolTipWidget(QtSvg.QSvgWidget):
+    def __init__(self, tooltip: str, parent=None):
+        super().__init__(get_resource_path("img/question.svg"), parent)
+        self.setToolTip(tooltip)
+        self.setToolTipDuration(1000_000)
+        self.setCursor(QtCore.Qt.CursorShape.WhatsThisCursor)
+        self.setBaseSize(16, 16)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
 
 
 class WidgetColorSelect(QtWidgets.QWidget):
