@@ -267,15 +267,15 @@ def remember_opened_document() -> str:
         path = doc.PathName
     else:
         path = ""
-    print("Текущий документ:", path)
+    print(f"Текущий документ: '{path}'")
     return path
 
 def restore_opened_document(path: str) -> None:
     if path != "":
-        print("Возврат к ранее открытому документу:", repr(path))
+        print(f"Возврат к ранее открытому документу: '{path}'")
         app: KAPI7.IApplication = get_app7()
         docs: KAPI7.IDocuments = app.Documents
-        docs.Open(path, True)
+        app.ActiveDocument = docs.Open(path, True)
 
 
 def rebuild_current_document() -> None:
