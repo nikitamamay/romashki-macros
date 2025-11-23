@@ -792,7 +792,7 @@ def find_weld_polylines_without_bodies(
             mo1 = KAPI7.IModelObject1(pl)
             children: list[KAPI7.IModelObject] = ensure_list(mo1.Childrens(1))  # 1 - все отношения (ksRelationTypeEnum)
             for mo in children:
-                if mo.Name.startswith(prefix) and mo.Type == 11276:  # 11276 - элемент по траектории
+                if mo.Name.startswith(prefix) and mo.Type == 11276:  # KompasAPIObjectTypeEnum.ksObjectEvolution - 11276 - элемент по траектории
                     break
             else:
                 polylines.append(pl)
@@ -839,6 +839,157 @@ def find_and_create_weld_bodies(
 
         kompas5, kompas7 = get_kompas_objects()
         kompas5.ksRefreshActiveWindow()
+
+    if errors != "":
+        raise Exception(errors)
+
+
+def remove_welds(
+        prefix: str = RMWELD,
+        do_remove_in_weldpart_only: bool = True,
+        weldpart_path: str = "",
+        ) -> None:
+    doc, toppart = open_part()
+    selected_objs: list = get_selected(doc)
+
+    if not do_remove_in_weldpart_only:
+        _is_part_accepted = lambda feature_part: True
+    else:
+        _is_part_accepted = lambda feature_part: feature_part.FileName == weldpart_path
+
+    features_to_delete: dict[int, tuple[KAPI7.IFeature7, KAPI7.IPart7]] = {}
+    """ { (int) KAPI7.IPolyLine.Reference : (KAPI7.IFeature7) KAPI7.IPolyLine.Owner } """
+
+    errors: str = ""
+
+    # получение ломаных линий, которые связаны с построениями объектов, которые выделены пользователем
+
+    for obj in selected_objs:
+        def _f():
+            # FIXME проверить, что возвращает при выборе ребер в Компас16 - ведь KAPI7.IEdge появился только в Компас18
+
+            print(f"Выбранный объект '{obj.Name}' {obj}:")
+
+            # если выбрана сама ломаная в дереве построения модели
+            if isinstance(obj, KAPI7.IPolyLine):
+                pl: KAPI7.IPolyLine = obj
+                feature: KAPI7.IFeature7 = pl.Owner
+                feature_part: KAPI7.IPart7 = pl.Part
+                if pl.Name.startswith(prefix):
+                    print(f"\tявляется ломаной")
+                    if not _is_part_accepted(feature_part): return print("\tне используется, т.к. за пределами weldpart")
+                    features_to_delete[obj.Reference] = (feature, feature_part)
+                return
+
+            # если выбран KAPI7.IModelObject
+            if hasattr(obj, "Part") and hasattr(obj, "Owner") and hasattr(obj, "Reference"):
+                feature: KAPI7.IFeature7 = obj.Owner
+                feature_part: KAPI7.IPart7 = obj.Part
+
+            # если выбрано тело
+            elif isinstance(obj, KAPI7.IBody7):
+                body_feature: KAPI7.IFeature7 = KAPI7.IFeature7(obj)
+                body_creating_obj = ensure_list(body_feature.SubFeatures(0, True, True))[0]
+                feature: KAPI7.IFeature7 = KAPI7.IFeature7(body_creating_obj)
+                feature_part: KAPI7.IPart7 = KAPI7.IPart7(feature.OwnerFeature)
+                print(f"\tявляется телом от операции '{feature.Name}'")
+
+            # если выбрано непонятно что
+            else:
+                raise Exception(f"\tUnsupported object: {obj}")
+
+            if not _is_part_accepted(feature_part): return print("\tне используется, т.к. за пределами weldpart")
+
+            # получение ломаных линий модели, которой принадлежит выбранный объект
+
+            agc = KAPI7.IAuxiliaryGeomContainer(feature_part)
+            pls: KAPI7.IPolyLines = agc.PolyLines
+
+            part_polylines_features = {}
+            for i in range(pls.Count):
+                pl: KAPI7.IPolyLine = pls.Item(i)
+                if pl.Name.startswith(prefix):
+                    # part_polylines_features[pl.Reference] = [pl, pl.Owner]
+                    part_polylines_features[pl.Reference] = pl
+
+            # если feature выбранного объекта - это ломаная линия
+            # (т.е. если выбраны ребро или точка самой ломаной)
+
+            for pl in part_polylines_features.values():
+                pl_feature: KAPI7.IFeature7 = pl.Owner
+                if feature == pl_feature:
+                    features_to_delete[pl.Reference] = (pl_feature, feature_part)
+                    print(f"\tявляется элементом ломаной '{pl_feature.Name}'")
+                    return
+
+            # далее идет поиск по родителям feature выбранного obj.
+            # (т.е. если что-то из родителей этой feature - ломаная линия)
+            # (т.е. если выбраны ребро, грань или точка элемента выдавливания по траектории или др.)
+
+            mo1 = KAPI7.IModelObject1(feature)
+            parents: list[KAPI7.IModelObject] = ensure_list(mo1.Parents(1))  # 1 - все отношения (ksRelationTypeEnum)
+
+            for parent_obj in parents:
+                if parent_obj.Name.startswith(prefix) and parent_obj.Type == 11048:  # KompasAPIObjectTypeEnum.ksObjectPolyLine - 11048 - 3D ломаная
+                    parent_feature: KAPI7.IFeature7 = parent_obj.Owner
+                    features_to_delete[parent_obj.Reference] = (parent_feature, parent_obj.Part)
+                    print(f"\tявляется дочерним для ломаной '{parent_feature.Name}'")
+                    return
+
+            # не_связан с построениями ломаных
+            print(f"\tне_связан с построениями сварых швов '{prefix}'")
+
+        try:
+            _f()
+        except Exception as e:
+            s_e = traceback.format_exc()
+            print(s_e)
+            errors += s_e + "\n\n"
+
+    print(f"\nК удалению {len(features_to_delete)} ломаных линий", end="")
+
+    if len(features_to_delete) == 0:
+        print(f".")
+        return
+
+    # для ускорения BeginEdit()/EndEdit(): группировка ломаных по моделям, к которым они принадлжат
+
+    parts_and_features_to_delete: list[tuple[KAPI7.IPart7, list[KAPI7.IFeature7]]] = []
+
+    for pl_feature, pl_feature_part in features_to_delete.values():
+        for grouped_part, grouped_features in parts_and_features_to_delete:
+            if pl_feature_part.FileName == grouped_part.FileName:
+                grouped_features.append(pl_feature)
+                break
+        else:
+            parts_and_features_to_delete.append((pl_feature_part, [pl_feature]))
+
+    print(f" в {len(parts_and_features_to_delete)} моделях.\n")
+
+    # удаление ломаных в их моделях
+
+    docs: KAPI7.IDocuments = get_app7().Documents
+
+    for grouped_part, grouped_features in parts_and_features_to_delete:
+        print(f"В компоненте '{grouped_part.Name}' ('{grouped_part.FileName}'):")
+        if grouped_part != toppart:
+            odp: KAPI7.IOpenDocumentParam = docs.GetOpenDocumentParam()
+            grouped_part.BeginEdit(odp)
+            print(f"\tредактирование на месте начато")
+
+        for pl_feature in grouped_features:
+            pl_feature_name = pl_feature.Name
+            is_ok = pl_feature.Delete()
+            if is_ok:
+                print(f"\tудалена ломаная '{pl_feature_name}' и её дочерние построения.")
+            else:
+                print(f"\tне удалось удалить ломаную '{pl_feature_name}'")
+
+        if grouped_part != toppart:
+            grouped_part.EndEdit(False)
+            print(f"\tредактирование на месте окончено")
+
+    print(f"Удаление сварных швов окончено.")
 
     if errors != "":
         raise Exception(errors)
@@ -904,6 +1055,12 @@ class WeldingMacros(Macros):
             config.save_delayed()
 
         try:
+            assert isinstance(self._config["do_remove_in_weldpart_only"], bool)
+        except:
+            self._config["do_remove_in_weldpart_only"] = True
+            config.save_delayed()
+
+        try:
             assert isinstance(self._config["section_edges_count"], int)
         except:
             self._config["section_edges_count"] = 8
@@ -935,8 +1092,12 @@ class WeldingMacros(Macros):
         def _apply_changes() -> None:
             self._config["prefix"] = le_prefix.text()
             self._config["do_create_in_active_document"] = cb_use_active_model.isChecked()
+            self._config["do_remove_in_weldpart_only"] = cb_do_remove_in_weldpart_only.isChecked()
             self._config["section_edges_count"] = sb_section_edges_count.value()
             config.save_delayed()
+            if self._config["do_create_in_active_document"]:
+                self._welddoc_path = ""
+            _update_widgets()
 
         def _apply_list_changes() -> None:
             self._config["weld_specs"].clear()
@@ -977,6 +1138,10 @@ class WeldingMacros(Macros):
                 wsip.clear()
                 wsip.setEnabled(False)
 
+        def _update_widgets() -> None:
+            s_model = "в активной" if self._config["do_create_in_active_document"] else "во вспомогательной"
+            cb_do_remove_in_weldpart_only.setText(f"Разрешить удаление сварных швов только {s_model} модели")
+
         w = QtWidgets.QWidget()
         l = QtWidgets.QGridLayout()
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
@@ -985,6 +1150,10 @@ class WeldingMacros(Macros):
         cb_use_active_model = QtWidgets.QCheckBox("Создавать построения в активной модели, а не во вспомогательной")
         cb_use_active_model.setChecked(self._config["do_create_in_active_document"])
         cb_use_active_model.stateChanged.connect(_apply_changes)
+
+        cb_do_remove_in_weldpart_only = QtWidgets.QCheckBox(f"Разрешить удаление сварных швов только в {0} модели")
+        cb_do_remove_in_weldpart_only.setChecked(self._config["do_remove_in_weldpart_only"])
+        cb_do_remove_in_weldpart_only.stateChanged.connect(_apply_changes)
 
         sb_section_edges_count = QtWidgets.QSpinBox()
         sb_section_edges_count.setRange(0, 1000)
@@ -1005,20 +1174,21 @@ class WeldingMacros(Macros):
         wsip = WeldSpecInputWidget()
 
         l.addWidget(cb_use_active_model, 0, 0, 1, 2)
-        l.addWidget(QtWidgets.QLabel("Префикс для наименований построений и тел:"), 1, 0, 1, 1)
-        l.addWidget(le_prefix, 1, 1, 1, 2)
+        l.addWidget(cb_do_remove_in_weldpart_only, 1, 0, 1, 2)
+        l.addWidget(QtWidgets.QLabel("Префикс для наименований построений и тел:"), 2, 0, 1, 1)
+        l.addWidget(le_prefix, 2, 1, 1, 2)
 
-        l.addWidget(QtWidgets.QLabel("Количество сторон многоугольника в сечении шва:"), 2, 0, 1, 1)
-        l.addWidget(sb_section_edges_count, 2, 1, 1, 1)
+        l.addWidget(QtWidgets.QLabel("Количество сторон многоугольника в сечении шва:"), 3, 0, 1, 1)
+        l.addWidget(sb_section_edges_count, 3, 1, 1, 1)
         l.addWidget(gui_widgets.ToolTipWidget(
             "При значении '0' будет использоваться окружность\n"
             "в качестве сечения валика шва.\n\n"
             "Рекомендуется использовать 8-гранники\n"
             "для более корректного проецирования в чертежи."
-            ), 2, 2, 1, 1)
+            ), 3, 2, 1, 1)
 
-        l.addWidget(weld_specs_list, 3, 0, 1, 3)
-        l.addWidget(wsip, 4, 0, 1, 3)
+        l.addWidget(weld_specs_list, 4, 0, 1, 3)
+        l.addWidget(wsip, 5, 0, 1, 3)
 
         wsip.data_edited.connect(_weld_spec_data_changed)
         weld_specs_list.selection_changed.connect(_selection_changed)
@@ -1026,6 +1196,8 @@ class WeldingMacros(Macros):
         weld_specs_list.list_changed.connect(lambda: _apply_list_changes())
 
         weld_specs_list.clear_selection()
+
+        _update_widgets()
 
         return w
 
@@ -1068,11 +1240,17 @@ class WeldingMacros(Macros):
         btn_create_bodies.clicked.connect(lambda: self.execute(self._create_welds_bodies))
         btn_create_bodies.setToolTip("Создать твёрдые тела сварных швов\nпо ломаным линиям без тел")
 
+        btn_delete_welds = QtWidgets.QToolButton()
+        btn_delete_welds.setIcon(QtGui.QIcon(get_resource_path("img/macros/weld_delete.svg")))
+        btn_delete_welds.clicked.connect(lambda: self.execute(self._remove_welds))
+        btn_delete_welds.setToolTip("Удалить сварные швы\nпо выбранным элементам")
+
         return {
             "селектор выбора параметров сварного шва": cmbx_weld_specs,
             "кнопка создания сварных швов": btn_create_weld,
             "кнопка создания ломаных линий швов": btn_create_lines,
             "кнопка создания твердых тел швов": btn_create_bodies,
+            "кнопка удаления швов": btn_delete_welds,
         }
 
     def _check_for_weldpart(self) -> bool:
@@ -1132,6 +1310,10 @@ class WeldingMacros(Macros):
         wls = WeldLineSettings(diameter, layer, self._config["section_edges_count"])
         return wls
 
+    def _remove_welds(self) -> None:
+        if not self._check_for_weldpart(): return
+        remove_welds(self._config["prefix"], self._config["do_remove_in_weldpart_only"], self._welddoc_path)
+
 
 if __name__ == "__main__":
 
@@ -1141,13 +1323,14 @@ if __name__ == "__main__":
     weldpart_path = ""
 
 
-    action = 0b11
+    # action = 0b11
 
-    if action & 0b01:
-        create_welds(weldpart_path, wls, True, RMWELD)
+    # if action & 0b01:
+    #     create_welds(weldpart_path, wls, True, RMWELD)
 
-    if action & 0b10:
-        find_and_create_weld_bodies(weldpart_path, wls, True, RMWELD)
+    # if action & 0b10:
+    #     find_and_create_weld_bodies(weldpart_path, wls, True, RMWELD)
 
+    remove_welds(do_remove_in_weldpart_only=False)
 
 
