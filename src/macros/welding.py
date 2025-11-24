@@ -65,12 +65,17 @@ from src import math_utils
 import math
 import traceback
 
+import re
+
 
 RMWELD = "RMWeld"
 
 Point: typing.TypeAlias = tuple[float, float, float]
 Line: typing.TypeAlias = list[Point]
 TransformFunction: typing.TypeAlias = typing.Callable[[Point], Point]
+
+
+re_weld_spec_name = re.compile(r'^◺\d+[\.\,]?\d*$|◺\d+[\.\,]?\d* слой \d+$')
 
 
 class WeldLineSettings:
@@ -884,6 +889,9 @@ def remove_welds(
     doc, toppart = open_part()
     selected_objs: list = get_selected(doc)
 
+    if weldpart_path == "":
+        weldpart_path = toppart.FileName
+
     if not do_remove_in_weldpart_only:
         _is_part_accepted = lambda feature_part: True
     else:
@@ -1034,7 +1042,7 @@ class WeldSpecInputWidget(QtWidgets.QWidget):
         super().__init__(parent)
 
         self._sb_diameter = gui_widgets.SpinBox()
-        self._sb_diameter.setPrefix("⌀")
+        # self._sb_diameter.setPrefix("⌀")
         self._sb_diameter.valueChanged.connect(lambda: self.data_edited.emit())
 
         self._sb_layer = QtWidgets.QSpinBox()
@@ -1156,6 +1164,9 @@ class WeldingMacros(Macros):
             item = weld_specs_list.get_one_selected_item()
             if not item is None:
                 name = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
+                if re_weld_spec_name.match(name):
+                    s_layer = f" слой {layer}" if layer != -1 else ""
+                    name = f"◺{math_utils.round_tail_str(diam / 2)}{s_layer}"
                 _set_item_data(item, name, diam, layer)
                 _apply_list_changes()
 
