@@ -272,6 +272,10 @@ class LineEditDelegate(QtWidgets.QStyledItemDelegate):
 
     item_renamed = QtCore.pyqtSignal(QtCore.QModelIndex, str, str)  # old, new
 
+    def __init__(self, parent = None) -> None:
+        super().__init__(parent)
+        self._do_strip_value: bool = True
+
     def createEditor(
             self,
             parent: QtWidgets.QWidget,
@@ -289,11 +293,16 @@ class LineEditDelegate(QtWidgets.QStyledItemDelegate):
 
     def setModelData(self, editor: QtWidgets.QLineEdit, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex) -> None:
         value = editor.text()
+        if self._do_strip_value:
+            value = value.strip()
         model.setData(index, value, QtCore.Qt.EditRole)
         self.item_renamed.emit(index, index.data(self.ROLE_OLD_VALUE), value)
 
     def updateEditorGeometry(self, editor: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> None:
         editor.setGeometry(option.rect)
+
+    def set_value_stripping(self, do_strip: bool) -> None:
+        self._do_strip_value = bool(do_strip)
 
 
 class StringListSelector(QtWidgets.QWidget):
