@@ -39,6 +39,12 @@
 с многранником (или окружностью) и выполняется кинематическая операция
 (операция по траектории) для создания твердого тела сварного шва.
 
+Есть функция удаления ранее созданных сварных швов. Для этого нужно выделить
+объект, принадлежащий сварному шву --- например, грань, ребро или вершину
+твердого тела этого шва --- и выполнить команду. Удалится связанная с этим
+построением ломаная линия и все её дочерние построения, включая плоскость эскиза,
+эскиз и операция выдавливания по траектории.
+
 
 Макрос реализован как прототип для проверки идеи автоматизированного создания
 твердотельных обозначений сварных швов.
@@ -606,8 +612,7 @@ def create_welds(
 
     if not do_create_polylines_only:
         for pl7 in polylines7:
-            pl5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7)
-            create_weld_body(weldpart, pl5, wls, prefix)
+            create_weld_body(weldpart, pl7, wls, prefix)
 
         if weldpart_path != "":
             welddoc.Save()
@@ -662,7 +667,7 @@ def create_weld_polyline(
 
 def create_weld_body(
         part: KAPI7.IPart7,
-        polyline5: KAPI5.ksPolyLineDefinition,
+        pl7: KAPI7.IPolyLine,
         wls: WeldLineSettings,
         prefix: str = RMWELD,
         ) -> None:
@@ -670,18 +675,29 @@ def create_weld_body(
     Создает твердое тело сварного шва по ломаной `polyline5` в модели `part`.
     """
     assert isinstance(part, KAPI7.IPart7)
-    assert isinstance(polyline5, KAPI5.ksPolyLineDefinition)
+    assert isinstance(pl7, KAPI7.IPolyLine)
 
     kompas5, kompas7 = get_kompas_objects()
 
     part5: KAPI5.ksPart = transfer_to_K5(part)
+    polyline5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7, LDefin3D.o3d_polyline)
 
     # создание плоскости для эскиза
     # (через первую точку ломаной перпендикулярно первому сегменту ломаной)
 
+    ec: KAPI5.ksEdgeCollection = polyline5.EdgeCollection()
+    if ec is None:
+        # FIXME некоторые ломаные после transfer_to_K5 оказываются пустыми объектами;
+        # не имеют имени ('' object has no attribute 'name')
+        # и у них EdgeCollection() is None.
+        # Причина этой ошибки не_выявлена и воспроизвести ошибку не_получается.
+        # Возможно ранее, во время разработки, в функции create_weld_polyline()
+        # созданная ломаная оказывалась как будто некорректной...
+        raise Exception(f"Не удалось получить EdgeCollection у ломаной '{pl7.Name}'")
+
     plane5_entity: KAPI5.ksEntity = part5.NewEntity(LDefin3D.o3d_planePerpendicular)
     plane5: KAPI5.ksPlanePerpendicularDefinition = plane5_entity.GetDefinition()
-    edge5: KAPI5.ksEdgeDefinition = polyline5.EdgeCollection().First()
+    edge5: KAPI5.ksEdgeDefinition = ec.First()
     vertex5: KAPI5.ksEntity = polyline5.GetPointParams(0).GetVertex()
     plane5.SetEdge(edge5)
     plane5.SetPoint(vertex5)
@@ -692,7 +708,7 @@ def create_weld_body(
     if is_ok:
         print(f"Создана плоскость '{plane5_entity.name}'")
     else:
-        raise Exception(f"Не удалось создать плоскость по ломаной '{polyline5.name}'")
+        raise Exception(f"Не удалось создать плоскость по ломаной '{pl7.Name}'")
     plane: KAPI7.IPlane3DPerpendicularByEdge = transfer_to_7(plane5_entity)
 
     # создание эскиза с фигурой -- сечением шва
@@ -750,7 +766,7 @@ def create_weld_body(
     if is_ok:
         print(f"Создано вытягивание по траектории '{evolution_e.name}'")
     else:
-        raise Exception(f"Не удалось создать вытягивание по траектории по ломаной линии '{polyline5.name}' с эскизом '{sketch.Name}'")
+        raise Exception(f"Не удалось создать вытягивание по траектории по ломаной линии '{pl7.Name}' с эскизом '{sketch.Name}'")
 
     # переименование тела от операции вытягивания и задание слоя и цвета
 
@@ -787,7 +803,7 @@ def find_weld_polylines_without_bodies(
     pls: KAPI7.IPolyLines = agc.PolyLines
 
     for i in range(pls.Count):
-        pl: KAPI7.IPolyLine = pls.Item(i)
+        pl: KAPI7.IPolyLine = pls.PolyLine(i)
         if pl.Name.startswith(prefix):
             mo1 = KAPI7.IModelObject1(pl)
             children: list[KAPI7.IModelObject] = ensure_list(mo1.Childrens(1))  # 1 - все отношения (ksRelationTypeEnum)
@@ -814,8 +830,8 @@ def find_and_create_weld_bodies(
     if weldpart_path != "":
         previous_doc_path = remember_opened_document()
 
-    doc, toppart = open_part(weldpart_path)
-    polylines7 = find_weld_polylines_without_bodies(toppart, prefix)
+    welddoc, weldpart = open_part(weldpart_path, True)
+    polylines7 = find_weld_polylines_without_bodies(weldpart, prefix)
 
     print(f"Найдено {len(polylines7)} ломаных линий без твердотельных построений: {[pl.Name for pl in polylines7]}")
 
@@ -823,8 +839,7 @@ def find_and_create_weld_bodies(
 
     for pl7 in polylines7:
         try:
-            pl5: KAPI5.ksPolyLineDefinition = transfer_to_K5(pl7)
-            create_weld_body(toppart, pl5, wls, prefix)
+            create_weld_body(weldpart, pl7, wls, prefix)
             if do_hide_polylines:
                 pl7.Hidden = True
                 pl7.Update()
@@ -849,6 +864,23 @@ def remove_welds(
         do_remove_in_weldpart_only: bool = True,
         weldpart_path: str = "",
         ) -> None:
+    """
+    Удаляет ломаные линии и твердотельные построения сварных швов по их
+    элементам, которые выбрал пользователь.
+
+    Для выбранных объектов (вершин, ребер, граней твердых тел; самих твердых
+    тел; ребер и вершин ломаных; самих ломаных) в текущей модели определяет,
+    зависят ли построения этих объектов от ломаных линий с префиксом `prefix`
+    в названии.
+
+    Найденные ломаные линии удаляются из моделей, в которых они построены, при
+    `do_remove_in_weldpart_only == True`; или, в противном случае, удаляются
+    только те из них, которые принадлежат модели в файле `weldpart_path`.
+
+    При удалении ломаной линии соответственно удаляются все зависимые от неё
+    построения, включая плоскость эскиза, эскиз и операция выдавливания по
+    траектории.
+    """
     doc, toppart = open_part()
     selected_objs: list = get_selected(doc)
 
@@ -896,7 +928,7 @@ def remove_welds(
 
             # если выбрано непонятно что
             else:
-                raise Exception(f"\tUnsupported object: {obj}")
+                raise Exception(f"\tне поддерживается: {obj} type={type(obj)}")
 
             if not _is_part_accepted(feature_part): return print("\tне используется, т.к. за пределами weldpart")
 
