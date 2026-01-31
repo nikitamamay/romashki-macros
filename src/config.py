@@ -5,13 +5,17 @@
 
 """
 
+import os
+
 from src import config_reader
 from src import delayed_handler
 
 
 PROGRAM_NAME = "RomashkiMacros"
 APP_CONFIG_FOLDER = config_reader.get_user_config_folder(PROGRAM_NAME)
+PROGRAM_TEMP_FOLDER = os.path.join(os.environ.get("TEMP", "./Temp"), PROGRAM_NAME)
 
+config_reader.ensure_folder(PROGRAM_TEMP_FOLDER)
 
 config_reader.IS_VERBOSE = True
 

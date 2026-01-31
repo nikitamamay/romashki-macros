@@ -10,10 +10,9 @@ from time import time as get_timestamp
 import os
 import traceback
 
-from src.macros import HEAD
 
+from src import config
 
-HEAD.ensure_folder(HEAD.PROGRAM_TEMP_FOLDER)
 
 
 def save_ods_data(filepath: str, data: OrderedDict) -> None:
@@ -44,7 +43,7 @@ def read_ods_sheet(filepath: str, sheet_name: str = "Sheet1") -> list[list]:
 
 def create_temp_ods_filepath() -> str:
     filename = f"{int(get_timestamp())}.ods"
-    return os.path.join(HEAD.PROGRAM_TEMP_FOLDER, filename)
+    return os.path.join(config.PROGRAM_TEMP_FOLDER, filename)
 
 
 def remove_file(filepath: str) -> bool:

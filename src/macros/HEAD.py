@@ -24,10 +24,6 @@ import pythoncom
 import typing
 import os
 
-from src import config
-
-
-PROGRAM_TEMP_FOLDER = os.path.join(os.environ.get("TEMP", "./Temp"), config.PROGRAM_NAME)
 
 
 def ensure_folder(filepath: str) -> None:
