@@ -53,7 +53,8 @@ KAPI7.IColorParam7.SetAdvancedColor(color_traditional_to_kompas(color), Am, Di, 
 ```
 """
 
-DEFAULT_PAINT: PaintData = [0x909090, 0.5, 0.6, 0.8, 0.8, 0.0, 0.5]  # краска по-умолчанию для деталей в Компас16
+DEFAULT_PAINT: PaintData = (0x909090, 0.5, 0.6, 0.8, 0.8, 0.0, 0.5)
+""" Краска по-умолчанию для деталей в Компас v16 """
 
 
 re_html_color = re.compile(r'#[0-9,a-f,A-F]{6}', re.I)
@@ -120,29 +121,29 @@ class PaintInputWidget(QtWidgets.QWidget):
 
     def __init__(self, parent = None):
         super().__init__(parent)
-        self._color_dialog = QtWidgets.QColorDialog()
-        self._color_dialog.setWindowFlags(QtCore.Qt.WindowType.Widget)
-        self._color_dialog.setOption(QtWidgets.QColorDialog.ColorDialogOption.NoButtons, True)
-        self._color_dialog.currentColorChanged.connect(lambda: self.data_edited.emit())
+        self._csw = gui_widgets.WidgetColorSelect()
+        self._csw.color_changed.connect(lambda: self.data_edited.emit())
 
         self._layout = QtWidgets.QGridLayout()
         self._layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self._layout)
+        self._layout.addWidget(QtWidgets.QLabel("Цвет:"), 0, 0, 1, 1)
+        self._layout.addWidget(self._csw, 0, 1, 1, 2)
 
-        self._layout.addWidget(self._color_dialog, 0, 0, 1, 3)
+        self._slider_ambient = self._create_slider("Общий цвет", 0)
+        self._slider_diffuse = self._create_slider("Диффузия", 1)
+        self._slider_specularity = self._create_slider("Зеркальность", 2)
+        self._slider_shininess = self._create_slider("Блеск", 3)
+        self._slider_transparency = self._create_slider("Прозрачность", 5)
+        self._slider_emission = self._create_slider("Излучение", 4)
 
-        self._slider_ambient = self.create_slider("Общий цвет", 0)
-        self._slider_diffuse = self.create_slider("Диффузия", 1)
-        self._slider_specularity = self.create_slider("Зеркальность", 2)
-        self._slider_shininess = self.create_slider("Блеск", 3)
-        self._slider_transparency = self.create_slider("Прозрачность", 5)
-        self._slider_emission = self.create_slider("Излучение", 4)
+        self.clear()
 
     def clear(self) -> None:
-        pass
+        self.set_data(DEFAULT_PAINT)
 
     def get_data(self) -> PaintData:
-        color = self._color_dialog.currentColor().rgb() & 0xffffff
+        color = self._csw.get_color()
         Am = self._slider_ambient.value() / 100
         Di = self._slider_diffuse.value() / 100
         Sp = self._slider_specularity.value() / 100
@@ -153,7 +154,7 @@ class PaintInputWidget(QtWidgets.QWidget):
 
     def set_data(self, paint_data: PaintData) -> None:
         color, Am, Di, Sp, Sh, Tr, Em = paint_data
-        self._color_dialog.setCurrentColor(QtGui.QColor(color))
+        self._csw.set_color(color)
         self._slider_ambient.setValue(round(Am * 100))
         self._slider_diffuse.setValue(round(Di * 100))
         self._slider_specularity.setValue(round(Sp * 100))
@@ -161,7 +162,7 @@ class PaintInputWidget(QtWidgets.QWidget):
         self._slider_transparency.setValue(round(Tr * 100))
         self._slider_emission.setValue(round(Em * 100))
 
-    def create_slider(self, text: str, row: int) -> QtWidgets.QSlider:
+    def _create_slider(self, text: str, row: int) -> QtWidgets.QSlider:
         lbl_info = QtWidgets.QLabel(text)
 
         lbl_value = QtWidgets.QLabel("  0")
@@ -216,11 +217,11 @@ class MacrosPartsPainting(Macros):
             config.save_delayed()
 
     def settings_widget(self) -> QtWidgets.QWidget:
-        def _create_new_item() -> QtGui.QStandardItem:
+        def _create_new_item(name="#"+pretty_print_color(DEFAULT_PAINT[0]), paint=DEFAULT_PAINT) -> QtGui.QStandardItem:
             item = QtGui.QStandardItem()
-            item.setData("Краска", QtCore.Qt.ItemDataRole.DisplayRole)
-            item.setData(DEFAULT_PAINT, self.DATA_ROLE_PAINT_DATA)
-            item.setIcon(gui_widgets.get_icon_from_color(DEFAULT_PAINT[0]))
+            item.setData(name, QtCore.Qt.ItemDataRole.DisplayRole)
+            item.setData(paint, self.DATA_ROLE_PAINT_DATA)
+            item.setIcon(gui_widgets.get_icon_from_color(paint[0]))
             return item
 
         def _save_list() -> None:
@@ -230,6 +231,7 @@ class MacrosPartsPainting(Macros):
                 paint_data = item.data(self.DATA_ROLE_PAINT_DATA)
                 paint = [name, paint_data]
                 self._config["paints_list"].append(paint)
+            self.toolbar_update_requested.emit(False)
             config.save_delayed()
 
         def _selection_changed() -> None:
@@ -260,6 +262,15 @@ class MacrosPartsPainting(Macros):
             self.toolbar_update_requested.emit(False)
             config.save_delayed()
 
+        def _remember_current_paint() -> None:
+            def f():
+                paint_data = get_current_color()
+                name = "#" + pretty_print_color(paint_data[0])
+                item = _create_new_item(name, paint_data)
+                paints_selector.add_new_item(item)
+                _save_list()
+            self.execute(f)
+
         w = QtWidgets.QWidget()
         l = QtWidgets.QGridLayout()
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
@@ -276,7 +287,11 @@ class MacrosPartsPainting(Macros):
         cb_check_do_paint_children.setChecked(self._config["do_paint_children"])
         cb_check_do_paint_children.stateChanged.connect(_change_config)
 
+        btn_add_current_paint = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/paint_pipette.svg")), "Сохранить краску текущей модели")
+        btn_add_current_paint.clicked.connect(_remember_current_paint)
+
         paints_selector = gui_widgets.StringListSelector(_create_new_item)
+        paints_selector.add_custom_button(btn_add_current_paint)
         for name, paint_data in self._config["paints_list"]:
             item = QtGui.QStandardItem()
             item.setData(name, QtCore.Qt.ItemDataRole.DisplayRole)
@@ -320,12 +335,6 @@ class MacrosPartsPainting(Macros):
             btn_paint.menu().addAction(gui_widgets.get_icon_from_color(paint[0]), name, (lambda i: lambda: _apply_paint(i))(i))
 
         btn_paint.menu().addSeparator()
-
-        btn_paint.menu().addAction(
-            QtGui.QIcon(get_resource_path("img/macros/paint_pipette.svg")),
-            "Сохранить краску текущей модели",
-            lambda: self.execute(self._remember_current_paint),
-        )
 
         a_paint_like_owner = QtWidgets.QAction(
             QtGui.QIcon(get_resource_path("img/macros/paint.svg")),
@@ -371,13 +380,6 @@ class MacrosPartsPainting(Macros):
         else:
             name, paint = self._config["paints_list"][0]
         paint_parts(paint, UseColorEnum.useColorOur, self._config["do_paint_children"])
-
-    def _remember_current_paint(self) -> None:
-        paint = get_current_color()
-        name = "#" + pretty_print_color(paint[0])
-        self._config["paints_list"].append([name, paint])
-        config.save_delayed()
-        self.toolbar_update_requested.emit(True)
 
 
 if __name__ == "__main__":

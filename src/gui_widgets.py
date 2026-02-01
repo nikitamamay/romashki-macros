@@ -167,15 +167,21 @@ class WidgetColorSelect(QtWidgets.QWidget):
         self.setLayout(self._layout)
 
     def change_color(self) -> None:
-        color: int = QtWidgets.QColorDialog.getColor(
+        qcolor: int = QtWidgets.QColorDialog.getColor(
             QtGui.QColor(self._lbl_color.get_splash_color()),
             self,
         )
 
-        if color.isValid():
-            rgb = color.rgb() & 0xffffff
-            self._lbl_color.set_splash_color(rgb)
-            self.color_changed.emit(rgb)
+        if qcolor.isValid():
+            c = qcolor.rgb() & 0xffffff
+            self.set_color(c)
+            self.color_changed.emit(c)
+
+    def get_color(self) -> int:
+        return self._lbl_color.get_splash_color()
+
+    def set_color(self, color: int) -> None:
+        self._lbl_color.set_splash_color(color)
 
 
 class LineEditDelegate(QtWidgets.QStyledItemDelegate):
