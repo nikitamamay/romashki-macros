@@ -35,6 +35,22 @@ def get_icon_from_color(color: int, size: int = 16) -> QtGui.QIcon:
     painter.end()
     return QtGui.QIcon(p)
 
+def get_icon_from_gradient(color: tuple[int, int], size: int = 16) -> QtGui.QIcon:
+    g = QtGui.QLinearGradient()
+    g.setStart(0.0, 0.0)
+    g.setFinalStop(0.0, float(size - 1))
+    g.setColorAt(0.0, QtGui.QColor(color[0]))
+    g.setColorAt(1.0, QtGui.QColor(color[1]))
+
+    p = QtGui.QPixmap(size, size)
+    painter = QtGui.QPainter(p)
+    painter.setBrush(g)
+    painter.setPen(QtGui.QColorConstants.Black)
+    painter.drawRect(0, 0, size - 1, size - 1)
+    painter.end()
+    return QtGui.QIcon(p)
+
+
 def get_monospace_font() -> QtGui.QFont:
     font = QtGui.QFont()
     font.setFamilies(["Liberation Mono", "Consolas", "Courier New", "monospace"])
@@ -56,6 +72,68 @@ class LabelImage(QtWidgets.QLabel):
         painter.drawPixmap(0, 0, p)
 
 
+class LabelGradientColor(QtWidgets.QLabel):
+    """
+    Виджет для отрисовки цвета внутри черной рамки.
+
+    Цвета задаются в традиционном формате `0xRRGGBB`.
+    """
+    def __init__(self, parent = None):
+        super().__init__(parent)
+        self._top: int = 0
+        self._bottom: int = 0
+        self._has_gradient: bool = True
+
+    def set_gradient_enabled(self, has_gradient: bool) -> None:
+        self._has_gradient = has_gradient
+
+    def is_gradient_enabled(self) -> bool:
+        return self._has_gradient
+
+    def set_top_color(self, top: int):
+        self._top = top
+        self.update()
+
+    def set_bottom_color(self, bottom: int):
+        self._bottom = bottom
+        self.update()
+
+    def set_gradient_color(self, color: tuple[int, int]):
+        self._top = color[0]
+        self._bottom = color[1]
+        self.update()
+
+    def get_gradient_color(self) -> tuple[int, int]:
+        return (self._top, self._bottom)
+
+    def get_top_color(self) -> int:
+        return self._top
+
+    def get_bottom_color(self) -> int:
+        return self._bottom
+
+    set_splash_color = set_top_color
+    get_splash_color = get_top_color
+
+    def paintEvent(self, e: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter(self)
+
+        if self.isEnabled():
+            if self._has_gradient:
+                g = QtGui.QLinearGradient()
+                g.setStart(0.0, 0.0)
+                g.setFinalStop(0.0, float(self.height() - 1))
+                g.setColorAt(0.0, QtGui.QColor(self._top))
+                g.setColorAt(1.0, QtGui.QColor(self._bottom))
+
+                painter.setBrush(g)
+            else:
+                painter.setBrush(QtGui.QColor(self._top))
+
+        painter.setPen(QtGui.QColorConstants.Black)
+        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+
 class ToolTipWidget(QtSvg.QSvgWidget):
     def __init__(self, tooltip: str, parent=None):
         super().__init__(get_resource_path("img/question.svg"), parent)
@@ -71,200 +149,33 @@ class WidgetColorSelect(QtWidgets.QWidget):
 
     def __init__(self, color: int = 0xffffff, parent = None) -> None:
         super().__init__()
-        self.color: int = 0
+        self._lbl_color = LabelGradientColor()
+        self._lbl_color.setMinimumSize(16, 16)
+        self._lbl_color.set_gradient_enabled(False)
+        self._lbl_color.set_splash_color(color)
 
-        self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
+        self._btn_change = QtWidgets.QToolButton()
+        self._btn_change.setIcon(QtGui.QIcon(get_resource_path("img/edit.svg")))
+        self._btn_change.setToolTip("Изменить цвет")
+        self._btn_change.clicked.connect(self.change_color)
 
-        self.setMinimumSize(16, 16)
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self._layout = QtWidgets.QHBoxLayout()
+        self._layout.setSpacing(2)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.addWidget(self._lbl_color)
+        self._layout.addWidget(self._btn_change)
+        self.setLayout(self._layout)
 
-        self.set_color(color)
-
-    def set_color(self, new_color: int) -> None:
-        if new_color < 0:
-            new_color = 0
-        if new_color > 0xffffff:
-            new_color = 0xffffff
-        self.color: int = new_color
-        self.update()
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self._pressed = True
-            event.accept()
-            return
-
-    def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton \
-                and self._pressed \
-                and QtCore.QRect(QtCore.QPoint(0, 0), self.size()).contains(event.pos()):
-            self.show_dialog()
-            event.accept()
-
-        self._pressed = False
-
-    def show_dialog(self) -> None:
+    def change_color(self) -> None:
         color: int = QtWidgets.QColorDialog.getColor(
-            QtGui.QColor(self.color),
-            self.parent()
+            QtGui.QColor(self._lbl_color.get_splash_color()),
+            self,
         )
 
         if color.isValid():
             rgb = color.rgb() & 0xffffff
-            self.set_color(rgb)
+            self._lbl_color.set_splash_color(rgb)
             self.color_changed.emit(rgb)
-
-    def paintEvent(self, event: QtGui.QPaintEvent) -> None:
-        painter = QtGui.QPainter(self)
-
-        brush_style = QtCore.Qt.BrushStyle.SolidPattern if self.isEnabled() else QtCore.Qt.BrushStyle.DiagCrossPattern
-        pen_style = QtCore.Qt.PenStyle.DashLine if self.hasFocus() else QtCore.Qt.PenStyle.SolidLine
-        border_color = QtWidgets.qApp.palette().mid().color()
-
-        brush = QtGui.QBrush(QtGui.QColor(self.color), brush_style)
-        pen = QtGui.QPen(border_color, 1, pen_style)
-        painter.setPen(pen)
-
-        painter.fillRect(1, 1, self.width() - 2, self.height() - 2, brush)
-
-        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
-
-
-
-class WidgetGradientColorSelect(QtWidgets.QWidget):
-    color_changed = QtCore.pyqtSignal(list)
-
-    def __init__(self, color1: int = 0xffffff, color2: int = 0x000000, parent = None) -> None:
-        super().__init__(parent)
-
-        self.cs1 = WidgetColorSelect(color1)
-        self.cs1.color_changed.connect(lambda c: self._emit_color_changed_signal())
-        self.cs2 = WidgetColorSelect(color2)
-        self.cs2.color_changed.connect(lambda c: self._emit_color_changed_signal())
-
-        self.btn_remove_gradient = QtWidgets.QPushButton("Убрать градиент")
-        self.btn_remove_gradient.setToolTip("Сделать второй цвет таким же, как и первый")
-        self.btn_remove_gradient.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Maximum,
-            QtWidgets.QSizePolicy.Policy.Expanding
-        )
-        self.btn_remove_gradient.clicked.connect(self.remove_gradient)
-
-        self._layout = QtWidgets.QHBoxLayout()
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(2)
-        self._layout.addWidget(self.cs1)
-        self._layout.addWidget(self.cs2)
-        self._layout.addWidget(self.btn_remove_gradient)
-        self.setLayout(self._layout)
-
-    def remove_gradient(self) -> None:
-        self.cs2.set_color(self.cs1.color)
-        self._emit_color_changed_signal()
-
-    def _emit_color_changed_signal(self) -> None:
-        self.color_changed.emit([self.cs1.color, self.cs2.color])
-
-    def set_color(self, color: tuple[int, int]) -> None:
-        c1, c2 = color
-        self.cs1.set_color(c1)
-        self.cs2.set_color(c2)
-
-    def get_color(self) -> tuple[int,int]:
-        return (self.cs1.color, self.cs2.color)
-
-
-class GradientColorDelegate(QtWidgets.QStyledItemDelegate):
-    ITEM_ROLE_GRADIENT_COLOR = 0x0101
-
-    def __init__(self, parent = None) -> None:
-        super().__init__(parent)
-
-    def createEditor(
-            self,
-            parent: QtWidgets.QWidget,
-            option: QtWidgets.QStyleOptionViewItem,
-            index: QtCore.QModelIndex
-            ) -> QtWidgets.QWidget:
-        editor = WidgetGradientColorSelect(parent=parent)
-        editor.setAutoFillBackground(True)
-        return editor
-
-    def sizeHint(self, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtCore.QSize:
-        return QtCore.QSize(100, 32)
-
-    def setEditorData(self, editor: QtWidgets.QWidget, index: QtCore.QModelIndex) -> None:
-        color: tuple[int, int] = index.data(GradientColorDelegate.ITEM_ROLE_GRADIENT_COLOR)
-        editor.set_color(color)
-
-    def setModelData(self, editor: QtWidgets.QWidget, model: QtCore.QAbstractItemModel, index: QtCore.QModelIndex) -> None:
-        color: tuple[int, int] = editor.get_color()
-        model.setData(index, color, GradientColorDelegate.ITEM_ROLE_GRADIENT_COLOR)
-
-    def updateEditorGeometry(self, editor: QtWidgets.QWidget, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> None:
-        editor.setGeometry(option.rect);
-
-    def paint(self, painter: QtGui.QPainter, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> None:
-        super().paint(painter, option, index)
-
-        color: tuple[int, int] = index.data(GradientColorDelegate.ITEM_ROLE_GRADIENT_COLOR)
-        c1, c2 = color
-
-        g = QtGui.QLinearGradient(option.rect.topLeft(), option.rect.topRight())
-        g.setColorAt(0, QtGui.QColor(c1))
-        g.setColorAt(1, QtGui.QColor(c2))
-
-        border_color = QtWidgets.qApp.palette().mid().color()
-
-        painter.setBrush(g)
-        painter.setPen(QtGui.QPen(border_color, 1))
-
-        spacingX = 5
-        spacingY = 5
-        painter.drawRect(option.rect.adjusted(0, 0, -1, -1).adjusted(spacingX, spacingY, -spacingX, -spacingY))
-
-
-class ColorsListView(QtWidgets.QListView):
-    data_changed = QtCore.pyqtSignal(list)
-
-    def __init__(self, parent = None) -> None:
-        super().__init__(parent)
-        self.setSpacing(2)
-
-        self._delegate = GradientColorDelegate()
-        self.setItemDelegate(self._delegate)
-
-        self._model = QtGui.QStandardItemModel()
-        self.setModel(self._model)
-
-        self._model.dataChanged.connect(lambda a, b, c: self.data_changed.emit(self.get_colors()))
-
-    def set_colors(self, colors: list[tuple[int, int]]) -> None:
-        for c in colors:
-            self.add_color(c)
-
-    def get_colors(self) -> list[tuple[int,int]]:
-        l = []
-        for i in range(self._model.rowCount()):
-            c = self._model.index(i, 0).data(GradientColorDelegate.ITEM_ROLE_GRADIENT_COLOR)
-            l.append(c)
-        return l
-
-    def add_color(self, color: tuple[int,int] = [0xffffff, 0x000000]) -> None:
-        item = QtGui.QStandardItem()
-        item.setData(color, GradientColorDelegate.ITEM_ROLE_GRADIENT_COLOR)
-        self._model.appendRow(item)
-
-    def remove_color(self, row: int) -> None:
-        self._model.removeRow(row)
-
-    def remove_selected(self) -> None:
-        selected: list[QtCore.QModelIndex] = self.selectedIndexes()
-        if len(selected) == 0:
-            return
-        index = selected[0]
-        self.remove_color(index.row())
 
 
 class LineEditDelegate(QtWidgets.QStyledItemDelegate):
@@ -374,6 +285,9 @@ class StringListSelector(QtWidgets.QWidget):
         self._layout_main.addLayout(self._layout_btns)
         self._layout_main.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self._layout_main)
+
+    def add_custom_button(self, btn: QtWidgets.QWidget) -> None:
+        self._layout_btns.addWidget(btn)
 
     def set_ordering_allowed(self, is_ordering_allowed: bool) -> None:
         self._is_ordering_allowed = is_ordering_allowed
