@@ -108,6 +108,8 @@ def get_attribute_number(
 
             break
     else:
+        app: KAPI7.IApplication = get_app7()
+        atm: KAPI7.IAttrTypeMng = KAPI7.IAttrTypeMng(app)
         at: KAPI7.IAttributeType = atm.CreateAttrType("")
         at.TypeName = attr_name
         at.AttrType = attr_data_type
