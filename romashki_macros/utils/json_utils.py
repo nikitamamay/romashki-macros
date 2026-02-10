@@ -12,15 +12,20 @@ import json
 CLASS_NAME_KEY = "CLASS_NAME"
 
 
+def json_copy(obj: dict) -> dict:
+    """
+    Выполняет глубокую копию словаря `obj` путем преобразования и парсинга в/из json.
+
+    Актуально для копирования конфигурации (config).
+    """
+    return json.loads(json.dumps(obj, ensure_ascii=False))
+
+
 def construct_class_dict(classes: list):
     class_names = {}
     for c in classes:
         class_names[c.__name__] = c
     return class_names
-
-
-def json_copy(obj: dict) -> dict:
-    return json.loads(json.dumps(obj, ensure_ascii=False))
 
 
 class JSONable:

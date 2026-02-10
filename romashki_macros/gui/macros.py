@@ -10,8 +10,12 @@ from .. import config
 
 
 class Macros(QtCore.QObject):
+    """
+    Графический интерфейс макроса и его настроек (конфигурации).
+    """
+
     settings_requested = QtCore.pyqtSignal(str)
-    """Signature: `toolbar_update_requested(macros_codename: str)` """
+    """Signature: `settings_requested(macros_codename: str)` """
 
     toolbar_update_requested = QtCore.pyqtSignal(bool)
     """Signature: `toolbar_update_requested(is_immediate: bool)` """
@@ -27,12 +31,25 @@ class Macros(QtCore.QObject):
         self.check_config()  # вызов проверки, переопределенной в классе макроса
 
     def set_parent_widget(self, widget: QtWidgets.QWidget) -> None:
+        """
+        Устанавливает родительский виджет (как правило, это главное окно приложения)
+        для вновь создаваемых виджетов и окон макроса.
+        """
         self._parent_widget = widget
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget | QtWidgets.QAction]:
+        """
+        Возвращает словарь с перечнем виджетов для панели инструментов:
+        `{ "widget_name": <QWidget-or-QAction>, ... }`.
+        """
         return {}
 
     def settings_widget(self) -> QtWidgets.QWidget:
+        """
+        Возвращает виджет, который будет отображаться в окне настроек макроса.
+
+        См. `gui.settings.SettingsWindow`.
+        """
         l = QtWidgets.QLabel(f'Нет доступных настроек для макроса «{self.full_name}».')
         l.setWordWrap(True)
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -40,7 +57,12 @@ class Macros(QtCore.QObject):
 
     def check_config(self) -> None:
         """
-            Проверить и исправить config (настройки) макроса.
+        Проверить и исправить config (настройки) макроса.
+
+        Примечание. В конструкторе `Macros` вызываются две функции:
+        базового класса `Macros.check_config()` и наследуемого `self.check_config()`.
+        В связи с этим вызывать `super().check_config()` в переопределенном методе
+        у дочернего класса не требуется.
         """
         try:
             assert isinstance(self._config, dict)
@@ -48,6 +70,15 @@ class Macros(QtCore.QObject):
             self._config = {}
 
     def execute(self, func) -> bool:
+        """
+        Метод-обёртка для вызова функции `func`; гарантирует перехват исключений
+        (Exceptions). Также на время выполнения `func` устанавливает курсор ожидания
+        для всего графического приложения.
+
+        Функция `func`, как правило, работает с Компас-API и может выбросить
+        исключение (Exception). Это исключение перехватится в этом методе и
+        выведется в виде всплывающего сообщения на экран.
+        """
         QtWidgets.qApp.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
         try:
             func()
@@ -59,6 +90,9 @@ class Macros(QtCore.QObject):
         return True
 
     def show_error(self, text: str = "Произошла ошибка", e: Exception|None = None) -> None:
+        """
+        Отображает всплывающее сообщение об ошибке.
+        """
         if e is None:
             e_str = ""
         else:
@@ -71,6 +105,9 @@ class Macros(QtCore.QObject):
         )
 
     def show_warning(self, text: str) -> None:
+        """
+        Отображает всплывающее сообщение о предупреждении.
+        """
         print("Внимание!", text)
         QtWidgets.QMessageBox.warning(
             self._parent_widget,
@@ -79,6 +116,10 @@ class Macros(QtCore.QObject):
         )
 
     def request_settings(self, code_name = "") -> None:
+        """
+        Посылает сигнал-запрос на открытие окна настроек
+        для макроса с кодовым именем `code_name`.
+        """
         if code_name == "":
             code_name = self.code_name
         self.settings_requested.emit(code_name)
@@ -86,6 +127,12 @@ class Macros(QtCore.QObject):
 
 
 class MacrosSingleCommand(Macros):
+    """
+    Графический интерфейс макроса, имеющего всего одну команду.
+
+    **DEPRECATED**. Устаревший класс. Рекомендуется использовать класс `Macros` вместо этого
+    в целях обеспечения возможности расширить функционал графического интерфейса макроса.
+    """
     def __init__(self, code_name: str, full_name: str, icon_path: str, tooltip: str) -> None:
         super().__init__(code_name, full_name)
         self._icon_path = icon_path
@@ -109,6 +156,10 @@ class MacrosSingleCommand(Macros):
         внутри обёртки `Macros.execute()`, поэтому дополнительно
         оборачивать его в try-except не требуется.
 
-        Метод должен быть переопределён в наследуемом классе.
+        Метод должен быть переопределён в наследуемом классе
+        и не должен вызываться через `super()`.
         """
-        assert False, "Метод execute_macros() должен быть переопределён в наследуемом классе"
+        raise Exception(
+            "Метод execute_macros() должен быть переопределён в наследуемом классе "\
+            "и не должен вызываться через `super()`"
+        )

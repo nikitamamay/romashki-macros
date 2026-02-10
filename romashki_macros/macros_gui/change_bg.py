@@ -1,3 +1,13 @@
+"""
+Модуль графического интерфейса макроса `change_bg`.
+
+Графический интерфейс позволяет:
+* [циклически] переменять цвет фона в рабочем окне модели и чертежа
+    по заранее заданному списку цветов;
+* настраивать список цветов;
+* сохранять текущий цвет фона рабочего окна в список цветов.
+
+"""
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -11,6 +21,17 @@ from ..utils.resources import get_resource_path
 
 
 from ..macros.change_bg import *
+
+
+def get_name_from_color(color: tuple[int, int]) -> str:
+    """
+    Возвращает строковое представление цвета `color`:
+    * для сплошного цвета: `#RRGGBB`;
+    * для градиента: `#RRGGBB - #RRGGBB` (верх и низ соответственно).
+    """
+    if color[0] == color[1]:
+        return f"{pretty_print_color(color[0])}"
+    return f"{pretty_print_color(color[0])} - {pretty_print_color(color[1])}"
 
 
 
@@ -125,7 +146,7 @@ class MacrosChangeBackgroundColor(MacrosSingleCommand):
             )
             if btn == QtWidgets.QMessageBox.StandardButton.Yes:
                 self._config["colors"].append(color)
-                print(f"Добавлен в список цветов цвет фона [#{pretty_print_color(color[0])}, #{pretty_print_color(color[1])}].")
+                print(f"Добавлен в список цветов цвет фона [{pretty_print_color(color[0])}, {pretty_print_color(color[1])}].")
         change_bg(self._config["colors"][i])
 
     def settings_widget(self) -> QtWidgets.QWidget:

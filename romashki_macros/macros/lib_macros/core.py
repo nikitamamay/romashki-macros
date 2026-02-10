@@ -25,11 +25,51 @@ import typing
 import os
 
 
-from ...utils.file_utils import ensure_folder  # FIXME
+from ...utils.file_utils import ensure_folder  # FIXME импортировать это не здесь, а в конкретном модуле
 
+
+
+def ensure_list(obj) -> list:
+    """
+    Вспомогательная функция, которая гарантированно возвращает список объектов
+    (тип возвращаемого значения `list`).
+
+    Актуально для функций Компас-API, которые непредсказуемо возвращают
+    или один объект, или массив объектов, или `None`.
+    Тип возврата у таких функций задан как `VT_ARRAY | VT_DISPATCH`.
+    Например, `IFeature7.ModelObjects()`.
+
+    Пример использования:
+    ```python
+    edges: list[KAPI7.IEdge] = ensure_list(feature.ModelObjects(LDefin3D.o3d_edge))
+    if len(edges) == 0:
+        print("Ребра не найдены")
+    ```
+    """
+    if obj is None:
+        return []
+    if isinstance(obj, (tuple,)):
+        return list(obj)
+    if isinstance(obj, (list,)):
+        return obj
+    return [obj]
 
 
 def is_kompas_running() -> bool:
+    """
+    Проверяет, запущен ли Компас-3D.
+
+    В случае, если Компас-3D уже запущен в невидимом режиме, функция делает
+    окно приложения Компас видимым.
+    *Актуально для случаев запуска макросов через скрипты, что может привести
+    к запуску Компас-3D в скрытом (невидимом) режиме.
+    Затем, когда пользователь пытается запустить графическое приложение Компас-3D,
+    операционная система создает второй экземпляр приложения Компас;
+    однако последующие запуски скриптов макросов будут продолжать работать
+    с первым невидимым экземпляром приложения, что может быть неожиданностью*.
+
+    Не выбрасывает исключений (Exceptions).
+    """
     try:
         pythoncom.connect('KOMPAS.Application.5')
         app = get_app7()
@@ -40,6 +80,20 @@ def is_kompas_running() -> bool:
         return False
 
 def start_kompas() -> bool:
+    """
+    Пытается запустить Компас-3D.
+
+    В случае, если Компас-3D уже запущен в невидимом режиме, функция делает
+    окно приложения Компас видимым.
+    *Актуально для случаев запуска макросов через скрипты, что может привести
+    к запуску Компас-3D в скрытом (невидимом) режиме.
+    Затем, когда пользователь пытается запустить графическое приложение Компас-3D,
+    операционная система создает второй экземпляр приложения Компас;
+    однако последующие запуски скриптов макросов будут продолжать работать
+    с первым невидимым экземпляром приложения, что может быть неожиданностью*.
+
+    Не выбрасывает исключений (Exceptions).
+    """
     try:
         get_kompas_objects()
         app = get_app7()
@@ -51,6 +105,9 @@ def start_kompas() -> bool:
 
 
 def get_kompas_objects() -> tuple[KAPI5.KompasObject, KAPI7.IKompasAPIObject]:
+    """
+    Возвращает объекты Компас-API.
+    """
     pythoncom.CoInitialize()
 
     iKompasObject5 = Dispatch('KOMPAS.Application.5')
@@ -63,6 +120,9 @@ def get_kompas_objects() -> tuple[KAPI5.KompasObject, KAPI7.IKompasAPIObject]:
 
 
 def get_app7(_ = None) -> KAPI7.IApplication:
+    """
+    Возвращает объект приложения Компас-API v7.
+    """
     app: KAPI7.IApplication = get_kompas_objects()[1].Application
     return app
 
@@ -84,6 +144,7 @@ class DocumentTypeEnum(int):
 
 
 def get_document_type(doc: KAPI7.IKompasDocument) -> int:
+    # TODO
     if doc.DocumentType == DocumentTypeEnum.ksDocumentPart \
             or doc.DocumentType == DocumentTypeEnum.ksDocumentAssembly \
             or doc.DocumentType == DocumentTypeEnum.ksDocumentTechnologyAssembly:
@@ -118,12 +179,21 @@ def color_kompas_to_traditional(color_kompas: int) -> int:
     return (r << 16) | (g << 8) | b
 
 def pretty_print_color(color: int) -> str:
-    return hex(color)[2:].rjust(6, "0")
+    """
+    Возвращает строковое представление цвета в html-нотациии: `#RRGGBB`.
+
+    Значение `color` уже должно быть в традиционном формате `0xRRGGBB`.
+    """
+    return "#" + hex(color)[2:].rjust(6, "0")
 
 
 
 
-def get_view_by_name(doc: KAPI7.IKompasDocument2D, view_name: str, do_raise_exception: bool = True) -> KAPI7.IView:
+def get_view_by_name(doc: KAPI7.IKompasDocument2D, view_name: str, do_raise_exception: bool = True) -> KAPI7.IView | None:
+    """
+    Возвращает вид в документе чертежа `doc` по имени `view_name`.
+    Если такого вида нет и `do_raise_exception == True`, то выбрасывается исключение.
+    """
     assert get_document_type(doc) == DocumentTypeEnum.type_2D
     vlm: KAPI7.IViewsAndLayersManager = doc.ViewsAndLayersManager
     views: KAPI7.IViews = vlm.Views
@@ -134,6 +204,9 @@ def get_view_by_name(doc: KAPI7.IKompasDocument2D, view_name: str, do_raise_exce
 
 
 def get_system_view(doc: KAPI7.IKompasDocument2D) -> KAPI7.IView:
+    """
+    Возвращает системный вид в документе чертежа или фрагмента `doc`
+    """
     assert doc.DocumentType == DocumentTypeEnum.ksDocumentFragment
     vlm: KAPI7.IViewsAndLayersManager = doc.ViewsAndLayersManager
     views: KAPI7.IViews = vlm.Views
@@ -147,6 +220,9 @@ def create_document2d(
         is_visible = True,
         path_to_save: str = "",
         ) -> KAPI7.IKompasDocument2D:
+    """
+    Создает новый новый 2D-документ.
+    """
     docs: KAPI7.IDocuments = app.Documents
     doc: KAPI7.IKompasDocument2D = KAPI7.IKompasDocument2D(
         docs.Add(type_, is_visible)
@@ -156,16 +232,23 @@ def create_document2d(
     return doc
 
 
-def get_active_part() -> tuple[KAPI7.IKompasDocument3D, KAPI7.IPart7]:
-    app = get_app7()
-    active_doc: KAPI7.IKompasDocument3D = KAPI7.IKompasDocument3D(app.ActiveDocument)
-    return (active_doc, active_doc.TopPart)
+def open_document(filepath: str = "", is_hidden: bool = False) -> KAPI7.IKompasDocument | None:
+    """
+    Возвращает документ Компас, который сохранен по пути `filepath`.
 
+    Если `filepath == ""`, то возвращается текущий документ
+    или `None`, если ни один документ не открыт.
 
-def open_document(filepath: str = "", is_hidden: bool = False) -> KAPI7.IKompasDocument:
+    Если документа с указанным путем нет среди открытых, то открывает его.
+    Документ открывается в скрытом режиме, если `is_hidden == True`.
+    """
     app = get_app7()
     if filepath == "":
         return app.ActiveDocument
+
+    filepath = os.path.abspath(filepath)
+    if not os.path.isfile(filepath):
+        raise Exception(f"Файл не существует или не является файлом: '{filepath}'")
 
     docs: KAPI7.IDocuments = app.Documents
 
@@ -186,11 +269,14 @@ def open_document(filepath: str = "", is_hidden: bool = False) -> KAPI7.IKompasD
 
 
 def open_part(filepath: str = "", is_hidden: bool = False) -> tuple[KAPI7.IKompasDocument3D, KAPI7.IPart7]:
-    # FIXME добавить возможность указать исполнение здесь (по обозначению, например, или по его окончанию -01)
-    """ Если `filepath == ""`, то возвращается текущий документ и его компонент верхнего уровня. """
-
+    """
+    Открывает документ 3D-модели (или использует активный документ, если `filepath == ""`)
+    и возвращает объекты документа и его компонента верхнего уровня.
+    """
     if filepath == "":
-        return get_active_part()
+        app = get_app7()
+        active_doc: KAPI7.IKompasDocument3D = KAPI7.IKompasDocument3D(app.ActiveDocument)
+        return (active_doc, active_doc.TopPart)
 
     doc = open_document(filepath, is_hidden)
 
@@ -199,8 +285,12 @@ def open_part(filepath: str = "", is_hidden: bool = False) -> tuple[KAPI7.IKompa
 
 
 def open_part_K5(filepath: str = "", is_hidden: bool = False) -> tuple[KAPI5.ksDocument3D, KAPI5.ksPart]:
-    # FIXME добавить возможность указать исполнение здесь (по обозначению, например, или по его окончанию -01)
+    """
+    Открывает документ 3D-модели (или использует активный документ, если `filepath == ""`)
+    и возвращает объекты документа и его компонента верхнего уровня.
 
+    Вариант функции для Компас-API 5.
+    """
     iKompasObject5, iKompasObject7 = get_kompas_objects()
 
     if filepath != "":
@@ -218,7 +308,11 @@ def open_part_K5(filepath: str = "", is_hidden: bool = False) -> tuple[KAPI5.ksD
 
 
 def open_doc2d(filepath: str = "") -> KAPI7.IKompasDocument2D:
-    """ Если `filepath == ""`, то возвращается `app.ActiveDocument`. """
+    """
+    Открывает 2D-документ чертежа или фрагмента
+    (или использует активный документ, если `filepath == ""`)
+    и возвращает объект документа.
+    """
     app: KAPI7.IApplication = get_app7()
 
     if filepath == "":
@@ -236,8 +330,15 @@ def open_doc2d(filepath: str = "") -> KAPI7.IKompasDocument2D:
     doc2d: KAPI7.IKompasDocument2D = KAPI7.IKompasDocument2D(doc)
     return doc2d
 
+
 def open_doc2d_K5(filepath: str = "") -> KAPI5.ksDocument2D:
-    """ Если `filepath == ""`, то возвращается `app.ActiveDocument`. """
+    """
+    Открывает 2D-документ чертежа или фрагмента
+    (или использует активный документ, если `filepath == ""`)
+    и возвращает объект документа.
+
+    Вариант функции для Компас-API 5.
+    """
     iKompasObject5, iKompasObject7 = get_kompas_objects()
 
     if filepath != "":
@@ -253,6 +354,13 @@ def open_doc2d_K5(filepath: str = "") -> KAPI5.ksDocument2D:
 
 
 def remember_opened_document() -> str:
+    """
+    Возвращает путь к файлу текущего активного документа.
+
+    Если нет активного документа (не открыт ни один документ)
+    или если активный документ не сохранен,
+    возвращается `""`.
+    """
     app = get_app7()
     doc: KAPI7.IKompasDocument = app.ActiveDocument
     if not doc is None:
@@ -262,15 +370,25 @@ def remember_opened_document() -> str:
     print(f"Текущий документ: '{path}'")
     return path
 
+
 def restore_opened_document(path: str) -> None:
+    """
+    Делает активным документ с путём `path`.
+
+    Если путь пустой `path == ""`, то функция не делает ничего.
+    """
     if path != "":
         print(f"Возврат к ранее открытому документу: '{path}'")
         app: KAPI7.IApplication = get_app7()
-        docs: KAPI7.IDocuments = app.Documents
-        app.ActiveDocument = docs.Open(path, True)
+        # docs: KAPI7.IDocuments = app.Documents
+        # app.ActiveDocument = docs.Open(path, True)
+        app.ActiveDocument = open_document(path)
 
 
 def rebuild_current_document() -> None:
+    """
+    Перестраивает текущую активную 3D-модель.
+    """
     doc, part = open_part()
     doc.RebuildDocument()
     print(f"Перестроен документ: {doc.PathName}")
@@ -281,6 +399,13 @@ def create_part(
         is_visible = True,
         path_to_save: str = "",
         ) -> tuple[KAPI7.IKompasDocument3D, KAPI7.IPart7]:
+    """
+    Создает новый документ 3D-модели с типом `type3d` (деталь или сборка)
+    с режимом видимости документа `is_visible`
+    и путем для сохранения файла `path_to_save`.
+
+    Если путь непустой `path_to_save != ""`, то сразу сохраняет файл на диск.
+    """
     app = get_app7()
     docs: KAPI7.IDocuments = app.Documents
     doc: KAPI7.IKompasDocument3D = KAPI7.IKompasDocument3D(
@@ -293,7 +418,18 @@ def create_part(
 
 
 
-def get_selected(active_doc: KAPI7.IKompasDocument3D|KAPI7.IKompasDocument2D1, classes: tuple=(object)) -> list:
+def get_selected(active_doc: KAPI7.IKompasDocument3D|KAPI7.IKompasDocument2D1, classes: tuple=(object,)) -> list:
+    """
+    Возвращает список (`list`) выбранных объектов с фильтрацией по типам `classes`
+    (для которых `isinstance(obj, classes) == True`).
+    По-умолчанию, если не задан `classes`, то возвращаются все выбранные объекты
+    без предварительной фильтрации.
+
+    **Внимание!** В версии Компас-3D v22 и ранее (возможно, и позднее)
+    в Python-модулях Компас-API (в файлах `KompasAPI7.py`, `Kompas6API5.py`)
+    отсутствует какая-либо иерархия классов! Так, например,
+    `issubclass(KAPI7.IVertex, KAPI7.IModelObject) == False`!
+    """
     assert isinstance(active_doc, (KAPI7.IKompasDocument3D, KAPI7.IKompasDocument2D1))
     sm: KAPI7.ISelectionManager = active_doc.SelectionManager
     s_objs: typing.Iterable[KAPI7.IKompasAPIObject] = ([sm.SelectedObjects] \
@@ -312,7 +448,21 @@ def get_selected(active_doc: KAPI7.IKompasDocument3D|KAPI7.IKompasDocument2D1, c
 
     return objects
 
-def get_selected_K5(active_doc5: KAPI5.ksDocument3D, classes: tuple=(object)) -> list:
+
+def get_selected_K5(active_doc5: KAPI5.ksDocument3D, classes: tuple=(object,)) -> list:
+    """
+    Возвращает список (`list`) выбранных объектов с фильтрацией по типам `classes`
+    (для которых `isinstance(obj, classes) == True`).
+    По-умолчанию, если не задан `classes`, то возвращаются все выбранные объекты
+    без предварительной фильтрации.
+
+    **Внимание!** В версии Компас-3D v22 и ранее (возможно, и позднее)
+    в Python-модулях Компас-API (в файлах `KompasAPI7.py`, `Kompas6API5.py`)
+    отсутствует какая-либо иерархия классов! Так, например,
+    `issubclass(KAPI7.IVertex, KAPI7.IModelObject) == False`!
+
+    Вариант функции для Компас-API 5.
+    """
     smng: KAPI5.ksSelectionMng = active_doc5.GetSelectionMng()
 
     print(f"Выбрано {smng.GetCount()} объектов (K5): [", end="")
@@ -334,29 +484,48 @@ def get_selected_K5(active_doc5: KAPI5.ksDocument3D, classes: tuple=(object)) ->
 
 
 def transfer_to_K5(obj: object, o3d_type: int = 0) -> object:
+    """
+    Преобразует объект интерфейса Компас-API 5 `obj`
+    в объект интерфейса Компас-API 7.
+
+    См. также `transfer_to_7()`.
+    """
     kompas5, kompas7 = get_kompas_objects()
     return kompas5.TransferInterface(obj, 1, o3d_type)
 
 def transfer_to_7(obj: object, o3d_type: int = 0) -> object:
+    """
+    Преобразует объект интерфейса Компас-API 7 `obj`
+    в объект интерфейса Компас-API 5.
+
+    См. также `transfer_to_K5()`.
+    """
     kompas5, kompas7 = get_kompas_objects()
     return kompas5.TransferInterface(obj, 2, o3d_type)
 
 
 def iterate_child_parts(part: KAPI7.IPart7):
+    """
+    Возвращает итератор по компонентам модели `part`.
+    В качестве компонентов могут быть как детали (если `part` - это сборка),
+    так и модели компоновочной геометрии и модели деталей-заготовок (?).
+    """
     parts: KAPI7.IParts7 = part.Parts
     for i in range(parts.Count):
         p = parts.Part(i)
         yield p
 
 
-def apply_to_children_r(part: KAPI7.IPart7, function: typing.Callable[[KAPI7.IPart7], bool]):
+def apply_to_children_r(part: KAPI7.IPart7, function: typing.Callable[[KAPI7.IPart7], bool]):  # Постфикс `_r` --- это `recursive`.
     """
-        Внимание! Будут итерироваться все компоненты, включая компоновочную геометрию и все её компоненты!
+    Рекурсивно применяет функцию `function` к компонентам модели `part`.
 
-        Определение callback-функции: `function(child_part) -> bool`.
-        Если `function()` возвращает `False`, то дочерние компоненты `child_part`-а не будут итерироваться.
+    **Внимание!** По умолчанию итерируются все компоненты, включая компоновочную геометрию и все её компоненты!
 
-        Постфикс в названии этой функции `_r` --- это `recursive`.
+    Определение callback-функции: `function(child_part) -> bool`.
+    Если `function()` возвращает `False`, то дочерние компоненты `child_part`-а не будут итерироваться.
+
+    См. также `apply_to_children_with_parent_r()` --- отличия лишь в сигнатурах `function`.
     """
     parts: KAPI7.IParts7 = part.Parts
     for i in range(parts.Count):
@@ -365,28 +534,22 @@ def apply_to_children_r(part: KAPI7.IPart7, function: typing.Callable[[KAPI7.IPa
             apply_to_children_r(p, function)
 
 
-def apply_to_children_with_parent_r(parent_part: KAPI7.IPart7, function: typing.Callable[[KAPI7.IPart7, KAPI7.IPart7], bool]) -> None:
+def apply_to_children_with_parent_r(parent_part: KAPI7.IPart7, function: typing.Callable[[KAPI7.IPart7, KAPI7.IPart7], bool]) -> None:  # Постфикс `_r` --- это `recursive`.
     """
-        Внимание! Будут итерироваться все компоненты, включая компоновочную геометрию и все её компоненты!
+    Рекурсивно применяет функцию `function` к компонентам модели `part`.
 
-        Определение callback-функции: `function(child_part, parent_part) -> bool`.
-        Если `function()` возвращает `False`, то дочерние компоненты `child_part`-а не будут итерироваться.
+    **Внимание!** По умолчанию итерируются все компоненты, включая компоновочную геометрию и все её компоненты!
 
-        Постфикс в названии этой функции `_r` --- это `recursive`.
+    Определение callback-функции: `function(child_part, parent_part) -> bool`.
+    Если `function()` возвращает `False`, то дочерние компоненты `child_part`-а не будут итерироваться.
+
+    См. также `apply_to_children_r()` --- отличия лишь в сигнатурах `function`.
     """
     parts: KAPI7.IParts7 = parent_part.Parts
     for i in range(parts.Count):
         child_part = parts.Part(i)
         if function(child_part, parent_part):
             apply_to_children_with_parent_r(child_part, function)
-
-
-def ensure_list(obj) -> list:
-    if obj is None:
-        return []
-    if isinstance(obj, (tuple, list)):
-        return obj
-    return [obj]
 
 
 

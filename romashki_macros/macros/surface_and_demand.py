@@ -18,6 +18,10 @@ from .lib_macros.core import *
 
 
 def set_surface_finish(sf_text: str) -> None:
+    """
+    Задает общую шероховатость ("неуказанную", в правом верхнем углу)
+    с текстом `sf_text` в текущем чертеже.
+    """
     doc2d: KAPI7.IKompasDocument2D = open_doc2d()
     dc: KAPI7.IDrawingDocument = KAPI7.IDrawingDocument(doc2d)
 
@@ -29,6 +33,9 @@ def set_surface_finish(sf_text: str) -> None:
 
 
 def set_technical_demand(td_text: str) -> None:
+    """
+    Задает технические требования с текстом `td_text` в текущем чертеже.
+    """
     doc2d: KAPI7.IKompasDocument2D = open_doc2d()
     dc: KAPI7.IDrawingDocument = KAPI7.IDrawingDocument(doc2d)
 

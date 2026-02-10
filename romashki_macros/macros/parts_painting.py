@@ -2,6 +2,7 @@
 Макрос для покраски компонентов.
 
 Макрос предоставляет функционал:
+
 * для сохранения краски текущей модели, чтобы использовать её повторно.
 
 * для покраски компонентов в какой-то определенный цвет.
@@ -26,7 +27,6 @@
 from .lib_macros.core import *
 
 import typing
-import re
 
 
 PaintData: typing.TypeAlias = tuple[int, float, float, float, float, float, float]
@@ -46,18 +46,25 @@ KAPI7.IColorParam7.SetAdvancedColor(color_traditional_to_kompas(color), Am, Di, 
 """
 
 DEFAULT_PAINT: PaintData = (0x909090, 0.5, 0.6, 0.8, 0.8, 0.0, 0.5)
-""" Краска по-умолчанию для деталей в Компас v16 """
-
-
-re_html_color = re.compile(r'#[0-9,a-f,A-F]{6}', re.I)
+""" Краска по умолчанию для деталей в Компас v16 """
 
 
 class UseColorEnum:
-    useColorUnknown = -1  # тип не определен
-    useColorOur = 0  # собственный цвет
-    useColorOwner = 1   # цвет хозяина (исходного объекта)
-    useColorSource = 2  # цвет источника
-    useColorLayer = 3  # Цвет слоя
+    useColorUnknown = -1
+    """ цвет не определен """
+
+    useColorOur = 0
+    """ собственный цвет ("наш" цвет XD) """
+
+    useColorOwner = 1
+    """ цвет хозяина (исходного объекта) """
+
+    useColorSource = 2
+    """ цвет источника """
+
+    useColorLayer = 3
+    """ цвет слоя """
+
 
 
 def paint_parts(

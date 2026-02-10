@@ -58,12 +58,11 @@ def fast_mate() -> None:
         print("Быстрое сопряжение: первый вызов")
         # Сохранение настроек, которые были до вызова
         fast_mate_used = not fast_mate_used
-        last_selection_filter = lib_selection_filter.get_objects_filter(app)
+        last_selection_filter = lib_selection_filter.get_objects_filter()
         last_visible_elements = lib_visible_elements.get_visible_elements(active_doc)
 
         # Установить фильтр выбора объектов на "Системы координат" и "Контрольные точки"
         lib_selection_filter.set_objects_filter(
-            app,
             lib_selection_filter.binaryObjectsFilter.CS | lib_selection_filter.binaryObjectsFilter.ControlPoints
         )
 
@@ -89,7 +88,7 @@ def fast_mate() -> None:
     else:
         print("Быстрое сопряжение: второй вызов")
         fast_mate_used = not fast_mate_used
-        lib_selection_filter.set_objects_filter(app, last_selection_filter)
+        lib_selection_filter.set_objects_filter(last_selection_filter)
         last_selection_filter = 0
         lib_visible_elements.set_visible_elements(active_doc, last_visible_elements)
         last_visible_elements = 0

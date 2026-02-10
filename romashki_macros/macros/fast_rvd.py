@@ -9,7 +9,7 @@
 Макрос предоставляет функционал:
 * для изменения диаметра окружности, представляющей собой наружный диаметр РВД,
 * для изменения толщины стенки кинематической операции (операции по траектории)
-    с этой окружностью.
+с этой окружностью.
 
 Макрос актуален для старой версии Компаса без библиотеки "Гибкие шланги".
 
@@ -19,6 +19,9 @@ from .lib_macros.core import *
 
 
 def set_sketch_circle_diameter(diameter: float) -> None:
+    """
+    Устанавливает для окружностей в выбранных эскизах размер диаметра равным `diameter`.
+    """
     doc, toppart = open_part()
 
     sketches: list[KAPI7.ISketch] = get_selected(doc, KAPI7.ISketch)
@@ -38,6 +41,13 @@ def set_sketch_circle_diameter(diameter: float) -> None:
 
 
 def set_evolution_wall_thickness(thickness: float) -> None:
+    """
+    Устанавливает для выбранных операций выдавливания по траектории
+    признак тонкостенного построения и устанавливает толщину стенки равной `thickness`.
+
+    Может не срабоать с первого раза (?). В таком случае следует запустить функцию
+    ещё раз.
+    """
     assert isinstance(thickness, (float, int))
     doc5, toppart5 = open_part_K5()
     selected = get_selected_K5(doc5)

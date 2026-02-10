@@ -10,6 +10,9 @@ import math
 ### CLASSES
 
 class Point3d():
+    """
+    Точка в трёхмерном пространстве.
+    """
     def __init__(self,
             x: float = 0.0,
             y: float = 0.0,
@@ -27,12 +30,22 @@ class Point3d():
 
     @staticmethod
     def from_array(arr: list[float]) -> 'Point3d':
+        """
+        Создает объект точки из массива (или кортежа) из трёх чисел
+        координат точки в порядке X, Y, Z.
+        """
         return Point3d(arr[0], arr[1], arr[2])
 
     def to_array(self) -> list[float]:
+        """
+        Создает массив из трёх чисел координат точки в порядке X, Y, Z.
+        """
         return [self.x, self.y, self.z]
 
     def copy(self) -> 'Point3d':
+        """
+        Копирует точку. Возвращает новый объект точки с теми же координатами.
+        """
         p = Point3d()
         p.x = self.x
         p.y = self.y
@@ -41,7 +54,8 @@ class Point3d():
 
     def transform(self, transform_matrix: 'Matrix3x3'):
         """
-        `Point(3*1) = TransformMatrix(3*3) * Point(3*1)`
+        Применяет к координатам точки матрицу оператора 3*3 `transform_matrix` так, что
+        `new_Point(3*1) = TransformMatrix(3*3) * old_Point(3*1)`.
         """
         old_x, old_y, old_z = self.to_array()
         self.x = old_x * transform_matrix.Xx + old_y * transform_matrix.Yx + old_z * transform_matrix.Zx
@@ -50,6 +64,10 @@ class Point3d():
         return self
 
     def move(self, translate_vector: 'Vector3d'):
+        """
+        Складывает координаты точки с вектором `translate_vector` так, что
+        `new_Point(3*1) = TranslateVector(3*1) + old_Point(3*1)`.
+        """
         self.x += translate_vector.x
         self.y += translate_vector.y
         self.z += translate_vector.z
@@ -58,8 +76,18 @@ class Point3d():
 
 
 class Vector3d(Point3d):
+    """
+    Вектор в трёхмерном пространстве. Несёт информацию только лишь о направлении
+    вектора; точка начала подразумевается в `(0, 0, 0)`.
+
+    Класс вектора `Vector3d` унаследован от класса точки `Point3d`.
+    """
+
     @staticmethod
     def from_single_point(point: Point3d) -> 'Vector3d':
+        """
+        Создает объект вектора путем копирования координат заданной точки.
+        """
         v = Vector3d()
         v.x = point.x
         v.y = point.y
@@ -68,6 +96,10 @@ class Vector3d(Point3d):
 
     @staticmethod
     def from_points(start: Point3d, end: Point3d) -> 'Vector3d':
+        """
+        Создает объект вектора, координаты которого получаются разностью
+        координат точки конца и точки начала.
+        """
         v = Vector3d()
         v.x = end.x - start.x
         v.y = end.y - start.y
@@ -76,21 +108,38 @@ class Vector3d(Point3d):
 
     @staticmethod
     def from_array(arr: list[float]) -> 'Vector3d':
+        """
+        Создает объект вектора из массива (или кортежа) из трёх чисел
+        координат вектора в порядке X, Y, Z.
+        """
         return Vector3d(arr[0], arr[1], arr[2])
 
     def copy(self) -> 'Vector3d':
+        """
+        Копирует вектор. Возвращает новый объект вектора с теми же координатами.
+        """
         return Vector3d.from_single_point(self)
 
     def get_length(self) -> float:
+        """
+        Возвращает длину вектора.
+        """
         return math.sqrt(self.x ** 2 + self.y ** 2 + self.z ** 2)
 
     def multiply(self, a: float):
+        """
+        Умножает координаты вектора в `a` раз.
+        """
         self.x *= a
         self.y *= a
         self.z *= a
         return self
 
     def normalize(self):
+        """
+        Нормализует вектор. То есть пропорционально уменьшает координаты вектора
+        так, что его длина оказывается равной `1.0`.
+        """
         return self.multiply(1 / self.get_length())
 
 
@@ -137,6 +186,16 @@ class Matrix3x3():
 
     @staticmethod
     def from_array(arr: list[list[float]]) -> 'Matrix3x3':
+        """
+        Создает объект матрицы из двухмерного массива чисел:
+        ```python
+        [
+            [Xx, Yx, Zx],
+            [Xy, Yy, Zy],
+            [Xz, Yz, Zz],
+        ]
+        ```
+        """
         m = Matrix3x3()
         m.Xx, m.Yx, m.Zx = arr[0]
         m.Xy, m.Yy, m.Zy = arr[1]
@@ -144,6 +203,16 @@ class Matrix3x3():
         return m
 
     def to_array(self) -> list[list[float]]:
+        """
+        Возвращает элементы матрицы в виде двухмерного массива чисел:
+        ```python
+        [
+            [Xx, Yx, Zx],
+            [Xy, Yy, Zy],
+            [Xz, Yz, Zz],
+        ]
+        ```
+        """
         return [
             [self.Xx, self.Yx, self.Zx],
             [self.Xy, self.Yy, self.Zy],
@@ -152,6 +221,10 @@ class Matrix3x3():
 
     @staticmethod
     def from_vectors(vectorX: Vector3d, vectorY: Vector3d, vectorZ: Vector3d) -> 'Matrix3x3':
+        """
+        Создает объект матрицы из трёх векторов. Координаты векторов в порядке X, Y, Z
+        записываются в столбцах матрицы.
+        """
         m = Matrix3x3()
         m.Xx = vectorX.x
         m.Xy = vectorX.y
@@ -165,6 +238,9 @@ class Matrix3x3():
         return m
 
     def to_vectors(self) -> tuple[Vector3d, Vector3d, Vector3d]:
+        """
+        Возвращает элементы в столбцах матрицы в виде трёх векторов в порядке X, Y, Z.
+        """
         return (self.get_vector_x(), self.get_vector_y(), self.get_vector_z())
 
     def __str__(self) -> str:
@@ -174,15 +250,27 @@ class Matrix3x3():
         return f"<{self.__str__()} at {hex(id(self))}>"
 
     def get_vector_x(self) -> Vector3d:
+        """
+        Возвращает первый столбец матрицы в виде вектора.
+        """
         return Vector3d(self.Xx, self.Xy, self.Xz)
 
     def get_vector_y(self) -> Vector3d:
+        """
+        Возвращает второй столбец матрицы в виде вектора.
+        """
         return Vector3d(self.Yx, self.Yy, self.Yz)
 
     def get_vector_z(self) -> Vector3d:
+        """
+        Возвращает третий столбец матрицы в виде вектора.
+        """
         return Vector3d(self.Zx, self.Zy, self.Zz)
 
     def copy(self) -> 'Matrix3x3':
+        """
+        Копирует матрицу. Возвращает новый объект матрицы с теми же элементами.
+        """
         m = Matrix3x3()
         m.Xx = self.Xx
         m.Xy = self.Xy
@@ -198,15 +286,17 @@ class Matrix3x3():
 
 ### GENERAL FUNCTIONS
 
-def get_vector_length(v: Vector3d) -> float:
-    return v.get_length()
-
-
 def get_scalar_product(v1: Vector3d, v2: Vector3d) -> float:
+    """
+    Скалярное произведение векторов.
+    """
     return v1.x * v2.x + v1.y * v2.y + v1.z * v2.z
 
 
 def get_vector_product(v1: Vector3d, v2: Vector3d) -> Vector3d:
+    """
+    Векторное произведение векторов.
+    """
     v3 = Vector3d()
     v3.x = v1.y * v2.z - v1.z * v2.y
     v3.y = v1.z * v2.x - v1.x * v2.z
@@ -215,10 +305,16 @@ def get_vector_product(v1: Vector3d, v2: Vector3d) -> Vector3d:
 
 
 def project_vector_to_plane(vector: Vector3d, plane_normal: Vector3d) -> Vector3d:
+    """
+    Возвращает вектор-проекцию вектора `vector` на плоскость с нормалью `plane_normal`.
+    """
     return get_vector_product(get_vector_product(plane_normal, vector), plane_normal)
 
 
 def get_angle_between_vectors(v1: Vector3d, v2: Vector3d) -> float:
+    """
+    Возвращает угол между векторами.
+    """
     sp = get_scalar_product(v1, v2)
     l1 = v1.get_length()
     l2 = v2.get_length()
@@ -249,6 +345,9 @@ def get_angle_between_vectors_and_axis_to_rotate(vector_moving: Vector3d, vector
 
 
 def multiply_matrixes(m1: Matrix3x3, m2: Matrix3x3) -> Matrix3x3:
+    """
+    Умножает матрицы.
+    """
     arr1 = m1.to_array()
     arr2 = m2.to_array()
     arr3 = Matrix3x3().to_array()

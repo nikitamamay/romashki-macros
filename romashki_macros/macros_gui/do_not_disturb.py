@@ -1,10 +1,14 @@
+"""
+Модуль графического интерфейса макроса `do_not_disturb`.
 
+Графический интерфейс позволяет:
+* включать и отключать режим "Не беспокоить".
+
+"""
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
-from .. import config
 
-from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
 
 from ..utils.resources import get_resource_path

@@ -1,4 +1,15 @@
+"""
+Модуль графического интерфейса макроса `parts_painting`.
 
+Графический интерфейс позволяет:
+* сохранять краску текущей модели в список красок;
+* покрасить текущую модель или выбранные компоненты, в том числе рекурсивно;
+* покрасить \"По исходному объекту\"",
+* настраивать:
+    * опцию рекурсивной покраски дочерних компонентов;
+    * список цветов и оптических свойств красок.
+
+"""
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
@@ -9,9 +20,13 @@ from ..gui.macros import Macros
 
 from ..utils.resources import get_resource_path
 
+import re
 
 from ..macros.parts_painting import *
 
+
+
+re_html_color = re.compile(r'#[0-9,a-f,A-F]{6}\b', re.I)
 
 
 class PaintInputWidget(QtWidgets.QWidget):
@@ -115,7 +130,7 @@ class MacrosPartsPainting(Macros):
             config.save_delayed()
 
     def settings_widget(self) -> QtWidgets.QWidget:
-        def _create_new_item(name="#"+pretty_print_color(DEFAULT_PAINT[0]), paint=DEFAULT_PAINT) -> QtGui.QStandardItem:
+        def _create_new_item(name=pretty_print_color(DEFAULT_PAINT[0]), paint=DEFAULT_PAINT) -> QtGui.QStandardItem:
             item = QtGui.QStandardItem()
             item.setData(name, QtCore.Qt.ItemDataRole.DisplayRole)
             item.setData(paint, self.DATA_ROLE_PAINT_DATA)
@@ -148,7 +163,7 @@ class MacrosPartsPainting(Macros):
             if not item is None:
                 name: str = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
                 if re_html_color.match(name):
-                    s_color = "#" + pretty_print_color(paint_data[0])
+                    s_color = pretty_print_color(paint_data[0])
                     item.setData(s_color, QtCore.Qt.ItemDataRole.DisplayRole)
 
                 item.setData(paint_data, self.DATA_ROLE_PAINT_DATA)
@@ -163,7 +178,7 @@ class MacrosPartsPainting(Macros):
         def _remember_current_paint() -> None:
             def f():
                 paint_data = get_current_color()
-                name = "#" + pretty_print_color(paint_data[0])
+                name = pretty_print_color(paint_data[0])
                 item = _create_new_item(name, paint_data)
                 paints_selector.add_new_item(item)
                 _save_list()
@@ -223,7 +238,6 @@ class MacrosPartsPainting(Macros):
             self._config["do_paint_children"] = state
             config.save_delayed()
 
-        # btn_paint = gui_widgets.ButtonWithList(QtGui.QIcon(get_resource_path("img/macros/paint_bucket.svg")), "")
         btn_paint = gui_widgets.ButtonWithList(QtGui.QIcon(get_resource_path("img/macros/paint_bucket.svg")), "")
         btn_paint.clicked.connect(lambda: self.execute(self._paint_with_first_color))
         btn_paint.setToolTip("Покрасить текущую модель первой краской в списке")

@@ -10,17 +10,23 @@ PRECISION_DIGIT_COUNT = 7
 
 
 def do_floats_equal(a: float, b: float) -> bool:
-    """ Checks whether `a` and `b` are equals numbers within `(10 ** -PRECISION_DIGIT_COUNT)` """
+    """
+    Проверяет, что числа `a` и `b` равны в пределах `(10 ** -PRECISION_DIGIT_COUNT)`.
+    """
     return abs(a - b) < 10 ** (-PRECISION_DIGIT_COUNT)
 
 
 def round_N(x: float, n: int) -> float:
-    """ Round to `n` digits after comma """
+    """
+    Округляет до `n` цифр после запятой.
+    """
     return round_tail(round(x * 10 ** n) / (10 ** n))
 
 
 def round_tail(x: float) -> float:
-    """ Round a number to `PRECISION_DIGIT_COUNT` digits after comma """
+    """
+    Округляет число до `PRECISION_DIGIT_COUNT` цифр после запятой.
+    """
     # return round_N(x, PRECISION_DIGIT_COUNT)  # recusion
     n = PRECISION_DIGIT_COUNT
     return round(x * 10 ** n) / (10 ** n)
@@ -28,46 +34,69 @@ def round_tail(x: float) -> float:
 
 def round_to_number(x: float, number: float, middle_coefficient: float = 0.5) -> float:
     """
-        Round `x` to a number, so `x` becomes multiple of `number`.
+    Округляет `x` кратно числу `number` с коэффициентом границы округления `middle_coefficient`.
 
-        The `middle_coefficient` controls the middle point of rounding.
-        `0` leads to rounding down, `1` leads to rounding up, and any different
-        value sets the rounding middle point in fraction of `number`.
+    Коэффициент границы округления `middle_coefficient` устанавливает относительную
+    границу округления, выше которой число округляется вверх, ниже - вниз.
+    Значение `middle_coefficient = 0.5` в итоге приводит к округлению по привычным
+    правилам математики,
+    значение `middle_coefficient = 0` приводит к округлению всегда вверх,
+    значение `middle_coefficient = 1` - всегда вниз.
 
-        For example, `middle_coefficient = 0.25` makes `x = 3.27` be rounded
-        to `4`.
+    Примеры:
+    * при `number = 1; middle_coefficient = 0.5` число `x = 3.27` будет
+    округлено до `3`;
+    * при `number = 1; middle_coefficient = 0.25` число `x = 3.27` будет
+    округлено до `4`;
+    * при `number = 0.1; middle_coefficient = 0.5` число `x = 3.27` будет
+    округлено до `3.3`;
+    * при `number = 0.1; middle_coefficient = 0.75` число `x = 3.27` будет
+    округлено до `3.2`.
     """
     if do_floats_equal(x, 0):
         return 0.0
     sign = -1 if x < 0 else +1
-    x = abs(x)
+    # x = abs(x)
     return round_tail(
         sign * int(
-            (x + middle_coefficient * number) // number
+            (abs(x) + (1 - middle_coefficient) * number) // number
         ) * number
     )
 
 
 def round_digits(x: float, digits_count: int) -> float:
-    """ Round to given digits count """
+    """
+    Округляет до `digits_count` значащих цифр.
+    """
     c10 = count_10(x)
     return round_tail(round_N(x, -c10 + digits_count - 1))
 
 
 def count_digits(x: float) -> int:
-    """ Count the digits in float's string representation """
+    """
+    Возвращает количество значащих цифр.
+
+    Предварительно применяет `round_tail()`.
+    """
     return len(str(round_tail(x)).replace("-", "").replace(".", "").strip("0"))
 
 
 def count_10(x: float) -> int:
-    """ Count the order of magnitude of a given `x` """
+    """
+    Возвращает порядок числа `x`.
+
+    То есть: `1 <= abs(x) / (10 ** count_10(x)) < 10`.
+    """
     if (do_floats_equal(x, 0)):
         return 0
     return math.floor(math.log10(abs(x)))
 
 
 def round_N_str(x: float, n: int) -> str:
-    """ Round to `n` digits after comma """
+    """
+    Округляет до `n` цифр после запятой и возвращает строку.
+    Включает незначащие нули справа.
+    """
     less0 = "-" if x < 0 else ""
     x = round_N(abs(x), n)
     if do_floats_equal(x, 0):
@@ -81,13 +110,19 @@ def round_N_str(x: float, n: int) -> str:
 
 
 def round_digits_str(x: float, digits_count: int) -> str:
-    """ Round to given digits count """
+    """
+    Округляет до `digits_count` значащих цифр и возвращает строку.
+    Включает незначащие нули справа.
+    """
     c10 = count_10(x)
     return round_N_str(x, -c10 + digits_count - 1)
 
 
 def round_tail_str(x: float) -> str:
-    """ Round a number to `PRECISION_DIGIT_COUNT` digits after comma """
+    """
+    Округляет до `PRECISION_DIGIT_COUNT` цифр после запятой и возвращает строку.
+    **Не включает** незначащие нули справа.
+    """
     x = round_tail(x)
     s = str(x)
     if s.endswith(".0"):
@@ -97,14 +132,10 @@ def round_tail_str(x: float) -> str:
 
 def round_to_number_str(x: float, number: float, middle_coefficient: float = 0.5) -> str:
     """
-        Round `x` to a number, so `x` becomes multiple of `number`.
+    Округляет `x` кратно `number` с коэффициентом границы округления `middle_coefficient`
+    и возвращает строку. **Не включает** незначащие нули справа.
 
-        The `middle_coefficient` controls the middle point of rounding.
-        `0` leads to rounding down, `1` leads to rounding up, and any different
-        value sets the rounding middle point in fraction of `number`.
-
-        For example, `middle_coefficient = 0.25` makes `x = 3.27` be rounded
-        to `4`.
+    См. также `round_to_number()`.
     """
     return round_tail_str(round_to_number(x, number, middle_coefficient))
 
@@ -112,6 +143,14 @@ def round_to_number_str(x: float, number: float, middle_coefficient: float = 0.5
 if __name__ == '__main__':
 
     x = -193.26364298374
+    y = 0.00123
 
-    print(x, round_to_number(x, 0.5))
+    print(count_10(x), x, 10 ** count_10(x), x / (10**count_10(x)), sep="\t")
+    print(count_10(y), y, 10 ** count_10(y), y / (10**count_10(y)), sep="\t")
+
+    x = 3.27
+    print(round_to_number(x, 1, 0.5), 1 * 0.5)
+    print(round_to_number(x, 1, 0.25), 1 * 0.25)
+    print(round_to_number(x, 0.1, 0.5), 0.5 * 0.5)
+    print(round_to_number(x, 0.1, 0.75), 0.5 * 0.75)
 

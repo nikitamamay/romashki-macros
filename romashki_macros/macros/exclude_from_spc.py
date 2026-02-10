@@ -7,13 +7,16 @@
 выключать это там.
 
 """
-
-
-
 from .lib_macros.core import *
 
 
 def switch_spc_inclusion(new_state: bool|None = None) -> None:
+    """
+    Изменяет флаг включения в спецификацию на `new_state`
+    у выбранных компонентов текущей 3D-модели.
+
+    Если `new_state is None`, то переключает флаг на противоположный.
+    """
     doc3d, toppart = open_part()
 
     parts: list[KAPI7.IPart7] = get_selected(doc3d, KAPI7.IPart7)

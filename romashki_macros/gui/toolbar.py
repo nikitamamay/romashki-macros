@@ -1,3 +1,7 @@
+"""
+Модуль виджета инструментальной панели.
+
+"""
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
