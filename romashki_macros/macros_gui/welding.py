@@ -18,6 +18,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -78,70 +79,37 @@ class WeldingMacros(Macros):
         self._welddoc_path = ""
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["prefix"], str)
-        except:
-            self._config["prefix"] = RMWELD
-            config.save_delayed()
+        config_reader.ensure_dict_value(self.config(), "prefix", str, RMWELD)
+        config_reader.ensure_dict_value(self.config(), "do_create_in_active_document", bool, True)
+        config_reader.ensure_dict_value(self.config(), "do_remove_in_weldpart_only", bool, True)
+        config_reader.ensure_dict_value(self.config(), "section_edges_count", int, 8)
 
-        try:
-            assert isinstance(self._config["do_create_in_active_document"], bool)
-        except:
-            self._config["do_create_in_active_document"] = True
-            config.save_delayed()
+        config_reader.ensure_dict_value_list(
+            self.config(), "weld_specs", list,
+            lambda spec: config_reader.isinstance_for_list_values(spec, [str, (float, int), int]))
+        if len(self.config()["weld_specs"]) == 0:
+            self.config()["weld_specs"].append(["◺5", 10.0, -1])
 
-        try:
-            assert isinstance(self._config["do_remove_in_weldpart_only"], bool)
-        except:
-            self._config["do_remove_in_weldpart_only"] = True
-            config.save_delayed()
-
-        try:
-            assert isinstance(self._config["section_edges_count"], int)
-        except:
-            self._config["section_edges_count"] = 8
-            config.save_delayed()
-
-        try:
-            assert isinstance(self._config["weld_specs"], list)
-            assert len(self._config["weld_specs"]) > 0
-            for spec in self._config["weld_specs"]:
-                assert isinstance(spec, list)
-                assert len(spec) == 3
-                assert isinstance(spec[0], str)
-                assert isinstance(spec[1], (float, int))
-                assert isinstance(spec[2], int)
-        except:
-            self._config["weld_specs"] = [
-                ["◺5", 10.0, -1],
-            ]
-            config.save_delayed()
-
-        try:
-            assert isinstance(self._config["active_weld_spec"], int)
-            assert 0 <= self._config["active_weld_spec"] < len(self._config["weld_specs"])
-        except:
-            self._config["active_weld_spec"] = 0
-            config.save_delayed()
+        config_reader.ensure_dict_value(self.config(), "active_weld_spec", int, 0)
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _apply_changes() -> None:
-            self._config["prefix"] = le_prefix.text()
-            self._config["do_create_in_active_document"] = cb_use_active_model.isChecked()
-            self._config["do_remove_in_weldpart_only"] = cb_do_remove_in_weldpart_only.isChecked()
-            self._config["section_edges_count"] = sb_section_edges_count.value()
+            self.config()["prefix"] = le_prefix.text()
+            self.config()["do_create_in_active_document"] = cb_use_active_model.isChecked()
+            self.config()["do_remove_in_weldpart_only"] = cb_do_remove_in_weldpart_only.isChecked()
+            self.config()["section_edges_count"] = sb_section_edges_count.value()
             config.save_delayed()
-            if self._config["do_create_in_active_document"]:
+            if self.config()["do_create_in_active_document"]:
                 self._welddoc_path = ""
             _update_widgets()
 
         def _apply_list_changes() -> None:
-            self._config["weld_specs"].clear()
+            self.config()["weld_specs"].clear()
             for item in weld_specs_list.iterate_items():
                 name: str = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
                 diameter: float = item.data(self.DATAROLE_DIAMETER)
                 layer: int = item.data(self.DATAROLE_LAYER)
-                self._config["weld_specs"].append([name, diameter, layer])
+                self.config()["weld_specs"].append([name, diameter, layer])
 
             config.save_delayed()
 
@@ -178,7 +146,7 @@ class WeldingMacros(Macros):
                 wsip.setEnabled(False)
 
         def _update_widgets() -> None:
-            s_model = "в активной" if self._config["do_create_in_active_document"] else "во вспомогательной"
+            s_model = "в активной" if self.config()["do_create_in_active_document"] else "во вспомогательной"
             cb_do_remove_in_weldpart_only.setText(f"Разрешить удаление сварных швов только {s_model} модели")
 
         w = QtWidgets.QWidget()
@@ -187,24 +155,24 @@ class WeldingMacros(Macros):
         w.setLayout(l)
 
         cb_use_active_model = QtWidgets.QCheckBox("Создавать построения в активной модели, а не во вспомогательной")
-        cb_use_active_model.setChecked(self._config["do_create_in_active_document"])
+        cb_use_active_model.setChecked(self.config()["do_create_in_active_document"])
         cb_use_active_model.stateChanged.connect(_apply_changes)
 
         cb_do_remove_in_weldpart_only = QtWidgets.QCheckBox(f"Разрешить удаление сварных швов только в {0} модели")
-        cb_do_remove_in_weldpart_only.setChecked(self._config["do_remove_in_weldpart_only"])
+        cb_do_remove_in_weldpart_only.setChecked(self.config()["do_remove_in_weldpart_only"])
         cb_do_remove_in_weldpart_only.stateChanged.connect(_apply_changes)
 
         sb_section_edges_count = QtWidgets.QSpinBox()
         sb_section_edges_count.setRange(0, 1000)
-        sb_section_edges_count.setValue(self._config["section_edges_count"])
+        sb_section_edges_count.setValue(self.config()["section_edges_count"])
         sb_section_edges_count.valueChanged.connect(_apply_changes)
 
-        le_prefix = QtWidgets.QLineEdit(self._config["prefix"])
+        le_prefix = QtWidgets.QLineEdit(self.config()["prefix"])
         le_prefix.setPlaceholderText(RMWELD)
         le_prefix.textChanged.connect(_apply_changes)
 
         weld_specs_list = gui_widgets.StringListSelector(_create_new_weld_spec)
-        for m in self._config["weld_specs"]:
+        for m in self.config()["weld_specs"]:
             name, diam, layer = m
             item = QtGui.QStandardItem()
             _set_item_data(item, name, diam, layer)
@@ -243,24 +211,24 @@ class WeldingMacros(Macros):
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _select_active_weld_spec() -> None:
             i = cmbx_weld_specs.currentIndex()
-            if i >= len(self._config["weld_specs"]):
+            if i >= len(self.config()["weld_specs"]):
                 self.request_settings()
                 if i > 0:
                     cmbx_weld_specs.setCurrentIndex(0)
             else:
-                self._config["active_weld_spec"] = i
+                self.config()["active_weld_spec"] = i
                 config.save_delayed()
 
         cmbx_weld_specs = QtWidgets.QComboBox()
 
-        for t in self._config["weld_specs"]:
+        for t in self.config()["weld_specs"]:
             name, diam, layer = t
             cmbx_weld_specs.addItem(name)
         cmbx_weld_specs.addItem(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настроить...")
         cmbx_weld_specs.setIconSize(QtCore.QSize(16, 16))
 
-        if self._config["active_weld_spec"] < cmbx_weld_specs.count():
-            cmbx_weld_specs.setCurrentIndex(self._config["active_weld_spec"])
+        if self.config()["active_weld_spec"] < cmbx_weld_specs.count():
+            cmbx_weld_specs.setCurrentIndex(self.config()["active_weld_spec"])
         cmbx_weld_specs.setToolTip("Выбор параметров сварного шва")
         cmbx_weld_specs.currentIndexChanged.connect(_select_active_weld_spec)
 
@@ -293,7 +261,7 @@ class WeldingMacros(Macros):
         }
 
     def _check_for_weldpart(self) -> bool:
-        if self._config["do_create_in_active_document"]:
+        if self.config()["do_create_in_active_document"]:
             self._welddoc_path = ""
         else:
             if self._welddoc_path == "":
@@ -310,17 +278,17 @@ class WeldingMacros(Macros):
     def _create_welds(self) -> None:
         if not self._check_for_weldpart(): return
         wls = self._get_active_spec()
-        create_welds(self._welddoc_path, wls, False, self._config["prefix"])
+        create_welds(self._welddoc_path, wls, False, self.config()["prefix"])
 
     def _create_welds_lines(self) -> None:
         if not self._check_for_weldpart(): return
         wls = self._get_active_spec()
-        create_welds(self._welddoc_path, wls, True, self._config["prefix"])
+        create_welds(self._welddoc_path, wls, True, self.config()["prefix"])
 
     def _create_welds_bodies(self) -> None:
         if not self._check_for_weldpart(): return
         wls = self._get_active_spec()
-        find_and_create_weld_bodies(self._welddoc_path, wls, True, self._config["prefix"])
+        find_and_create_weld_bodies(self._welddoc_path, wls, True, self.config()["prefix"])
 
     def _change_welddoc_path(self) -> None:
         try:
@@ -338,20 +306,20 @@ class WeldingMacros(Macros):
         self._welddoc_path = path
 
     def _get_active_spec(self) -> WeldLineSettings:
-        if len(self._config["weld_specs"]) == 0:
+        if len(self.config()["weld_specs"]) == 0:
             self.request_settings()
             raise Exception("Нет ни одного шаблона сварных швов")
 
-        if not (0 <= self._config["active_weld_spec"] < len(self._config["weld_specs"])):
-            raise Exception(f"Некорректный индекс выбранного шаблона сварного шва: {self._config["active_weld_spec"]}")
+        if not (0 <= self.config()["active_weld_spec"] < len(self.config()["weld_specs"])):
+            raise Exception(f"Некорректный индекс выбранного шаблона сварного шва: {self.config()["active_weld_spec"]}")
 
-        name, diameter, layer = self._config["weld_specs"][self._config["active_weld_spec"]]
-        wls = WeldLineSettings(diameter, layer, self._config["section_edges_count"])
+        name, diameter, layer = self.config()["weld_specs"][self.config()["active_weld_spec"]]
+        wls = WeldLineSettings(diameter, layer, self.config()["section_edges_count"])
         return wls
 
     def _remove_welds(self) -> None:
         if not self._check_for_weldpart(): return
-        remove_welds(self._config["prefix"], self._config["do_remove_in_weldpart_only"], self._welddoc_path)
+        remove_welds(self.config()["prefix"], self.config()["do_remove_in_weldpart_only"], self._welddoc_path)
 
 
 

@@ -13,6 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import MacrosSingleCommand
@@ -108,31 +109,22 @@ class MacrosChangeBackgroundColor(MacrosSingleCommand):
         )
 
     def check_config(self) -> None:
-        try:
-            assert "colors" in self._config
-            assert isinstance(self._config["colors"], list)
-            assert len(self._config["colors"]) > 0
-            for el in self._config["colors"]:
-                assert isinstance(el, (list, tuple))
-                assert len(el) == 2
-                for rgb in el:
-                    assert isinstance(rgb, int)
-                    assert 0x000000 <= rgb <= 0xffffff
-        except:
-            self._config["colors"] = [
-                DEFAULT_COLOR,
-            ]
-            config.save_delayed()
+        config_reader.ensure_dict_value_list(
+            self.config(), "colors", list,
+            lambda color: config_reader.isinstance_for_list_values(color, [int, int])
+        )
+        if len(self.config()["colors"]) == 0:
+            self.config()["colors"].append(DEFAULT_COLOR)
 
     def execute_macros(self) -> None:
-        if len(self._config["colors"]) == 0:
+        if len(self.config()["colors"]) == 0:
             self.request_settings()
             raise Exception(f"В списке цветов фона нет ни одного цвета!")
 
         color = obtain_current_color()
-        for i, c in enumerate(self._config["colors"]):
+        for i, c in enumerate(self.config()["colors"]):
             if c[0] == color[0] and c[1] == color[1]:
-                i = (i + 1) % len(self._config["colors"])
+                i = (i + 1) % len(self.config()["colors"])
                 break
         else:
             i = 0
@@ -145,9 +137,9 @@ class MacrosChangeBackgroundColor(MacrosSingleCommand):
                 QtWidgets.QMessageBox.StandardButton.Yes,
             )
             if btn == QtWidgets.QMessageBox.StandardButton.Yes:
-                self._config["colors"].append(color)
+                self.config()["colors"].append(color)
                 print(f"Добавлен в список цветов цвет фона [{pretty_print_color(color[0])}, {pretty_print_color(color[1])}].")
-        change_bg(self._config["colors"][i])
+        change_bg(self.config()["colors"][i])
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _create_new_item(color = DEFAULT_COLOR) -> QtGui.QStandardItem:
@@ -158,10 +150,10 @@ class MacrosChangeBackgroundColor(MacrosSingleCommand):
             return item
 
         def _save_list() -> None:
-            self._config["colors"].clear()
+            self.config()["colors"].clear()
             for item in colors_selector.iterate_items():
                 color = item.data(self.DATA_ROLE_COLOR)
-                self._config["colors"].append(color)
+                self.config()["colors"].append(color)
             config.save_delayed()
 
         def _selection_changed() -> None:
@@ -203,7 +195,7 @@ class MacrosChangeBackgroundColor(MacrosSingleCommand):
         colors_selector.set_name_editing_allowed(False)
         colors_selector.add_custom_button(btn_remember_current)
 
-        for color in self._config["colors"]:
+        for color in self.config()["colors"]:
             item = _create_new_item(color)
             colors_selector.add_new_item(item)
 

@@ -14,6 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -225,43 +226,32 @@ class MacrosStamp(Macros):
         super().__init__("stamp", "Основная надпись")
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["date_format"], str)
-        except Exception as e:
-            self._config["date_format"] = "%d.%m.%y"
+        config_reader.ensure_dict_value(self.config(), "date_format", str, "%d.%m.%y")
 
-        try:
-            assert isinstance(self._config["templates"], list)
-            assert len(self._config["templates"]) > 0
-            for name, template in self._config["templates"]:
-                assert isinstance(name, str)
-                assert isinstance(template, dict)
-                for key, value in template.items():
-                    assert isinstance(key, str)
-                    assert isinstance(value, str)
-        except Exception as e:
-            self._config["templates"] = [
-                ["Иванов", {
-                    StampCellNumbers.Razrabotal: "Иванов",
-                    StampCellNumbers.Proveril: "Петров",
-                    StampCellNumbers.Utverdil: "Сидоров",
-                }],
-            ]
+        def check_templates(el) -> bool:
+            if not config_reader.isinstance_for_list_values(el, [str, dict]): return False
+            config_reader.ensure_dict_items_types(el[1], (str, int), str)
+            return True
+        config_reader.ensure_dict_value_list(self.config(), "templates", list, check_templates)
 
-        try:
-            assert isinstance(self._config["current_template"], int)
-        except:
-            self._config["current_template"] = 0
+        if len(self.config()["templates"]) == 0:
+            self.config()["templates"].append(["Иванов", {
+                StampCellNumbers.Razrabotal: "Иванов",
+                StampCellNumbers.Proveril: "Петров",
+                StampCellNumbers.Utverdil: "Сидоров",
+            }])
+
+        config_reader.ensure_dict_value(self.config(), "current_template", int, 0)
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _select_current_template() -> None:
             i = cmbx_stamp_template.currentIndex()
-            if i >= len(self._config["templates"]):
+            if i >= len(self.config()["templates"]):
                 self.request_settings()
                 if i > 0:
                     cmbx_stamp_template.setCurrentIndex(0)
             else:
-                self._config["current_template"] = i
+                self.config()["current_template"] = i
                 config.save_delayed()
 
         btn_stamp_current_date = QtWidgets.QToolButton()
@@ -271,13 +261,13 @@ class MacrosStamp(Macros):
 
         cmbx_stamp_template = QtWidgets.QComboBox()
 
-        for t in self._config["templates"]:
+        for t in self.config()["templates"]:
             t_name, t_data = t
             cmbx_stamp_template.addItem(t_name)
         cmbx_stamp_template.addItem(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настроить...")
 
-        if self._config["current_template"] < cmbx_stamp_template.count():
-            cmbx_stamp_template.setCurrentIndex(self._config["current_template"])
+        if self.config()["current_template"] < cmbx_stamp_template.count():
+            cmbx_stamp_template.setCurrentIndex(self.config()["current_template"])
         cmbx_stamp_template.setToolTip("Выбор шаблона заполнения основной надписи")
         cmbx_stamp_template.currentIndexChanged.connect(_select_current_template)
 
@@ -294,9 +284,9 @@ class MacrosStamp(Macros):
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _apply_datetime_format(to_save = True):
-            self._config["date_format"] = le_format.text()
+            self.config()["date_format"] = le_format.text()
             try:
-                txt = today.strftime(self._config["date_format"])
+                txt = today.strftime(self.config()["date_format"])
             except:
                 txt = "Ошибка"
             lbl_result.setText(txt)
@@ -304,12 +294,12 @@ class MacrosStamp(Macros):
                 config.save_delayed()
 
         def _save_list():
-            self._config["templates"].clear()
+            self.config()["templates"].clear()
             for item in template_selector.iterate_items():
                 t_name = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
                 t_data = item.data(self.DATA_ROLE_TEMPLATE_DATA)
                 t = [t_name, t_data]
-                self._config["templates"].append(t)
+                self.config()["templates"].append(t)
             config.save_delayed()
 
         def _selection_changed() -> None:
@@ -356,7 +346,7 @@ class MacrosStamp(Macros):
         lbl_result = QtWidgets.QLabel()
         lbl_result.setFont(gui_widgets.get_monospace_font())
 
-        le_format = QtWidgets.QLineEdit(self._config["date_format"])
+        le_format = QtWidgets.QLineEdit(self.config()["date_format"])
         le_format.setFont(gui_widgets.get_monospace_font())
         le_format.textChanged.connect(lambda: _apply_datetime_format())
 
@@ -366,7 +356,7 @@ class MacrosStamp(Macros):
         stamp_template_widget.fill_stamp_cell_numbers_requested.connect(lambda: self.execute(stamp_numbers))
 
         template_selector = gui_widgets.StringListSelector(_create_new_template)
-        for t in self._config["templates"]:
+        for t in self.config()["templates"]:
             item = _create_new_template()
             _set_item_data(item, t)
             template_selector.add_new_item(item)
@@ -390,7 +380,7 @@ class MacrosStamp(Macros):
     def fill_razrabotal_current_date(self):
         self.execute(
             lambda: stamp({
-                StampCellNumbers.Razrabotal_data: format_date(fmt=self._config["date_format"]),
+                StampCellNumbers.Razrabotal_data: format_date(fmt=self.config()["date_format"]),
             })
         )
 
@@ -400,17 +390,20 @@ class MacrosStamp(Macros):
 
             stamp_data = {}
             for key in t_data:
-                stamp_data[key] = t_data[key].replace(TemplateKeywords.CurrentDate, format_date(fmt = self._config["date_format"]))
+                stamp_data[key] = t_data[key].replace(TemplateKeywords.CurrentDate, format_date(fmt = self.config()["date_format"]))
 
             stamp(stamp_data)
         self.execute(_fill_stamp_template)
 
     def _get_current_template(self):
-        if len(self._config["templates"]) == 0:
+        if len(self.config()["templates"]) == 0:
+            self.request_settings()
             raise Exception("Нет ни одного шаблона основной надписи")
-        if not (0 <= self._config["current_template"] < len(self._config["templates"])):
-            raise Exception(f"Некорректный индекс выбранного шаблона: {self._config["current_template"]}")
-        return self._config["templates"][self._config["current_template"]]
+
+        if not (0 <= self.config()["current_template"] < len(self.config()["templates"])):
+            raise Exception(f"Некорректный индекс выбранного шаблона: {self.config()["current_template"]}")
+
+        return self.config()["templates"][self.config()["current_template"]]
 
 
 if __name__ == "__main__":

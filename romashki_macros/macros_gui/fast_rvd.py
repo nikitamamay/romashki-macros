@@ -18,6 +18,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -76,16 +77,11 @@ class FastRVDMacros(Macros):
         )
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["rvd_sizes"], list)
-            for el in self._config["rvd_sizes"]:
-                assert isinstance(el, (list, tuple))
-                assert len(el) == 2
-                D, d = el
-                assert isinstance(D, float)
-                assert isinstance(d, float)
-        except:
-            self._config["rvd_sizes"] = [
+        config_reader.ensure_dict_value_list(
+            self.config(), "rvd_sizes", list,
+            lambda el: config_reader.isinstance_for_list_values(el, [float, float]))
+        if len(self.config()["rvd_sizes"]) == 0:
+            self.config()["rvd_sizes"].extend([
                 [15.0, 6.4],
                 [16.6, 7.9],
                 [19.0, 9.5],
@@ -93,16 +89,15 @@ class FastRVDMacros(Macros):
                 [25.4, 15.9],
                 [29.3, 19.1],
                 [37.2, 25.4],
-            ]
-            config.save_delayed()
+            ])
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _save_list() -> None:
-            self._config["rvd_sizes"].clear()
+            self.config()["rvd_sizes"].clear()
             for item in rvd_sizes_list.iterate_items():
                 D: float = item.data(self.DATAROLE_D_MAJOR)
                 d: float = item.data(self.DATAROLE_D_MINOR)
-                self._config["rvd_sizes"].append([D, d])
+                self.config()["rvd_sizes"].append([D, d])
             config.save_delayed()
 
         def _set_item_data(item: QtGui.QStandardItem, D: float, d: float) -> None:
@@ -140,7 +135,7 @@ class FastRVDMacros(Macros):
         w.setLayout(l)
 
         rvd_sizes_list = gui_widgets.StringListSelector(_create_new_size)
-        for m in self._config["rvd_sizes"]:
+        for m in self.config()["rvd_sizes"]:
             D, d = m
             item = QtGui.QStandardItem()
             _set_item_data(item, D, d)
@@ -162,7 +157,7 @@ class FastRVDMacros(Macros):
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _apply_size(size_index: int) -> None:
-            D, d = self._config["rvd_sizes"][size_index]
+            D, d = self.config()["rvd_sizes"][size_index]
             t = (D - d) / 2
             self.execute(
                 lambda: set_sketch_circle_diameter(D)
@@ -175,7 +170,7 @@ class FastRVDMacros(Macros):
         btn_apply.clicked.connect(lambda: self.execute(lambda: _apply_size(0)))
         btn_apply.setToolTip("Применить первый в списке размер РВД\nдля эскиза и кинематической операции")
 
-        for i, m in enumerate(self._config["rvd_sizes"]):
+        for i, m in enumerate(self.config()["rvd_sizes"]):
             D, d = m
             name = f"⌀{d} / ⌀{D}"
             btn_apply.menu().addAction(name, (lambda i: lambda: _apply_size(i))(i))

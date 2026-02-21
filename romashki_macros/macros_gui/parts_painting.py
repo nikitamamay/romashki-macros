@@ -14,6 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -107,27 +108,14 @@ class MacrosPartsPainting(Macros):
         )
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["paints_list"], list)
-            for el in self._config["paints_list"]:
-                assert isinstance(el, (list, tuple))
-                name, paint = el
-                color, Am, Di, Sp, Sh, Tr, Em = paint
-                assert isinstance(name, str)
-                assert isinstance(color, int)
-                for number in [Am, Di, Sp, Sh, Tr, Em]:
-                    assert isinstance(number, (float))
-        except:
-            self._config["paints_list"] = [
-                ["Стандартная краска", DEFAULT_PAINT],
-            ]
-            config.save_delayed()
-
-        try:
-            assert isinstance(self._config["do_paint_children"], bool)
-        except:
-            self._config["do_paint_children"] = False
-            config.save_delayed()
+        def check_paint(el) -> bool:
+            if not config_reader.isinstance_for_list_values(el, [str, (list, tuple)]): return False
+            if not config_reader.isinstance_for_list_values(el[1], [int, float, float, float, float, float, float]): return False
+            return True
+        config_reader.ensure_dict_value_list(self.config(), "paints_list", list, check_paint)
+        if len(self.config()["paints_list"]) == 0:
+            self.config()["paints_list"].append(["Стандартная краска", DEFAULT_PAINT])
+        config_reader.ensure_dict_value(self.config(), "do_paint_children", bool, False)
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _create_new_item(name=pretty_print_color(DEFAULT_PAINT[0]), paint=DEFAULT_PAINT) -> QtGui.QStandardItem:
@@ -138,12 +126,12 @@ class MacrosPartsPainting(Macros):
             return item
 
         def _save_list() -> None:
-            self._config["paints_list"].clear()
+            self.config()["paints_list"].clear()
             for item in paints_selector.iterate_items():
                 name = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
                 paint_data = item.data(self.DATA_ROLE_PAINT_DATA)
                 paint = [name, paint_data]
-                self._config["paints_list"].append(paint)
+                self.config()["paints_list"].append(paint)
             self.toolbar_update_requested.emit(False)
             config.save_delayed()
 
@@ -171,7 +159,7 @@ class MacrosPartsPainting(Macros):
                 _save_list()
 
         def _change_config() -> None:
-            self._config["do_paint_children"] = cb_check_do_paint_children.isChecked()
+            self.config()["do_paint_children"] = cb_check_do_paint_children.isChecked()
             self.toolbar_update_requested.emit(False)
             config.save_delayed()
 
@@ -197,7 +185,7 @@ class MacrosPartsPainting(Macros):
             "Компоновочная геометрия и исключенные из расчета\n"
             "компоненты и их дочерние компоненты не красятся."
         )
-        cb_check_do_paint_children.setChecked(self._config["do_paint_children"])
+        cb_check_do_paint_children.setChecked(self.config()["do_paint_children"])
         cb_check_do_paint_children.stateChanged.connect(_change_config)
 
         btn_add_current_paint = QtWidgets.QPushButton(QtGui.QIcon(get_resource_path("img/macros/paint_pipette.svg")), "Сохранить краску текущей модели")
@@ -205,7 +193,7 @@ class MacrosPartsPainting(Macros):
 
         paints_selector = gui_widgets.StringListSelector(_create_new_item)
         paints_selector.add_custom_button(btn_add_current_paint)
-        for name, paint_data in self._config["paints_list"]:
+        for name, paint_data in self.config()["paints_list"]:
             item = QtGui.QStandardItem()
             item.setData(name, QtCore.Qt.ItemDataRole.DisplayRole)
             item.setData(paint_data, self.DATA_ROLE_PAINT_DATA)
@@ -229,20 +217,20 @@ class MacrosPartsPainting(Macros):
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _apply_paint(paint_index: int) -> None:
-            name, paint = self._config["paints_list"][paint_index]
+            name, paint = self.config()["paints_list"][paint_index]
             self.execute(
-                lambda: paint_parts(paint, UseColorEnum.useColorOur, self._config["do_paint_children"])
+                lambda: paint_parts(paint, UseColorEnum.useColorOur, self.config()["do_paint_children"])
             )
 
         def _do_paint_children_handler(state: bool) -> None:
-            self._config["do_paint_children"] = state
+            self.config()["do_paint_children"] = state
             config.save_delayed()
 
         btn_paint = gui_widgets.ButtonWithList(QtGui.QIcon(get_resource_path("img/macros/paint_bucket.svg")), "")
         btn_paint.clicked.connect(lambda: self.execute(self._paint_with_first_color))
         btn_paint.setToolTip("Покрасить текущую модель первой краской в списке")
 
-        for i, m in enumerate(self._config["paints_list"]):
+        for i, m in enumerate(self.config()["paints_list"]):
             name, paint = m
             btn_paint.menu().addAction(gui_widgets.get_icon_from_color(paint[0]), name, (lambda i: lambda: _apply_paint(i))(i))
 
@@ -256,7 +244,7 @@ class MacrosPartsPainting(Macros):
         a_paint_like_owner.setToolTip("Покрасить выбранные компоненты способом \"По исходному объекту\"")
         a_paint_like_owner.triggered.connect(
             lambda: self.execute(
-                lambda: paint_parts(None, UseColorEnum.useColorOwner, self._config["do_paint_children"])
+                lambda: paint_parts(None, UseColorEnum.useColorOwner, self.config()["do_paint_children"])
             )
         )
         btn_paint.menu().addAction(a_paint_like_owner)
@@ -272,7 +260,7 @@ class MacrosPartsPainting(Macros):
             "компоненты и их дочерние компоненты не красятся."
         )
         a_paint_children.setCheckable(True)
-        a_paint_children.setChecked(self._config["do_paint_children"])
+        a_paint_children.setChecked(self.config()["do_paint_children"])
         a_paint_children.toggled.connect(_do_paint_children_handler)
         btn_paint.menu().addAction(a_paint_children)
 
@@ -287,9 +275,9 @@ class MacrosPartsPainting(Macros):
         }
 
     def _paint_with_first_color(self):
-        if len(self._config["paints_list"]) == 0:
+        if len(self.config()["paints_list"]) == 0:
             paint = DEFAULT_PAINT
         else:
-            name, paint = self._config["paints_list"][0]
-        paint_parts(paint, UseColorEnum.useColorOur, self._config["do_paint_children"])
+            name, paint = self.config()["paints_list"][0]
+        paint_parts(paint, UseColorEnum.useColorOur, self.config()["do_paint_children"])
 

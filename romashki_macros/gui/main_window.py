@@ -100,13 +100,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.settings_window.open_page(macros_code_name)
 
     def init_toolbars(self) -> None:
-        icon_size = QtCore.QSize(config.get_icon_size(), config.get_icon_size())
+        isiz = config.cr.cfg_interface()["icon_size"]
+        icon_size = QtCore.QSize(isiz, isiz)
 
         for tb in self._toolbars:
             self.removeToolBar(tb)
         self._toolbars.clear()
 
-        for tb_spec in config.toolbars():
+        for tb_spec in config.cr.cfg_interface_toolbars():
             tb = ToolBar(tb_spec["name"], self)
             tb.setAllowedAreas(self.TOOLBAR_AREA)
             tb.setFloatable(False)
@@ -143,7 +144,7 @@ class MainWindow(QtWidgets.QMainWindow):
             tb.move_event.connect(lambda: self._dh.do_task(self._save_toolbars_order_task_id))
 
     def save_toolbars_order(self) -> None:
-        config.toolbars().clear()
+        config.cr.cfg_interface_toolbars().clear()
         for tb in sorted(self._toolbars, key=lambda tb: tb.pos().x() + tb.pos().y() * 10000):
             tb_spec = {
                 "name": tb.windowTitle(),
@@ -151,7 +152,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "is_hidden": tb.isHidden(),
                 "contents": tb.get_contents(),
             }
-            config.toolbars().append(tb_spec)
+            config.cr.cfg_interface_toolbars().append(tb_spec)
         config.save_delayed()
 
     def wrap_toolbars(self) -> None:
@@ -168,7 +169,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def apply_stays_on_top(self) -> None:
         self.setWindowFlag(
             QtCore.Qt.WindowType.WindowStaysOnTopHint,
-            config.interface()["stays_on_top"]
+            config.cr.cfg_interface()["stays_on_top"]
         )
         self.show()
 

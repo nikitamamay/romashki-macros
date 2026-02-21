@@ -9,6 +9,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -27,11 +28,7 @@ class MacrosExcludeFromSPC(Macros):
         )
 
     def check_config(self) -> None:
-        try:
-            pass
-        except:
-            self._config["nothing"] = None
-            config.save_delayed()
+        pass
 
     def include_in_spc(self) -> None:
         QtWidgets.qApp.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)

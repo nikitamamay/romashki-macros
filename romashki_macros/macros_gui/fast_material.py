@@ -13,6 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -169,26 +170,21 @@ class MacrosFastMaterial(Macros):
 
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["materials_list"], list)
-            for el in self._config["materials_list"]:
-                assert isinstance(el, (list, tuple))
-                raw, density = el
-                assert isinstance(raw, str)
-                assert isinstance(density, (int, float))
-        except:
-            self._config["materials_list"] = [
+        config_reader.ensure_dict_value_list(
+            self.config(), "materials_list", list,
+            lambda material: config_reader.isinstance_for_list_values(material, [str, float]))
+        if len(self.config()["materials_list"]) == 0:
+            self.config()["materials_list"].extend([
                 ["40Х ГОСТ 4543-2016", DENSITY_STEEL],
                 ["Лист$d8 ГОСТ 19903-74;09Г2С ГОСТ 19281-2014$", DENSITY_STEEL],
                 ["Уголок$d20х20х3 ГОСТ 8509-93;Ст3сп ГОСТ 535-2005$", DENSITY_STEEL],
                 ["Труба$d50х50х3 ГОСТ 8639-82;09Г2С ГОСТ 19281-2014$", DENSITY_STEEL],
-            ]
-            config.save_delayed()
+            ])
 
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _apply_material(material_index: int) -> None:
-            s_raw, density = self._config["materials_list"][material_index]
+            s_raw, density = self.config()["materials_list"][material_index]
             self.execute(lambda: set_material_in_current_part(
                 s_raw, density
             ))
@@ -197,7 +193,7 @@ class MacrosFastMaterial(Macros):
         btn_material.clicked.connect(self.choose_material)
         btn_material.setToolTip("Назначить материал...")
 
-        for i, m in enumerate(self._config["materials_list"]):
+        for i, m in enumerate(self.config()["materials_list"]):
             s_raw, density = m
             s = get_single_line_material_str(*parse_material_str(s_raw))
             btn_material.menu().addAction(s, (lambda i: lambda: _apply_material(i))(i))
@@ -219,12 +215,12 @@ class MacrosFastMaterial(Macros):
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _save_list() -> None:
-            self._config["materials_list"].clear()
+            self.config()["materials_list"].clear()
             for item in materials_list.iterate_items():
                 s_raw = item.data(self.DATA_ROLE_RAW)
                 density = item.data(self.DATA_ROLE_DENSITY)
                 m = [s_raw, density]
-                self._config["materials_list"].append(m)
+                self.config()["materials_list"].append(m)
             config.save_delayed()
 
         def _set_item_data(item: QtGui.QStandardItem, s_raw: str, density: float) -> None:
@@ -263,7 +259,7 @@ class MacrosFastMaterial(Macros):
         w.setLayout(l)
 
         materials_list = gui_widgets.StringListSelector(_create_new_material)
-        for m in self._config["materials_list"]:
+        for m in self.config()["materials_list"]:
             s_raw, density = m
 
             item = QtGui.QStandardItem()
@@ -293,7 +289,7 @@ class MacrosFastMaterial(Macros):
         s_raw, density = self._dialog_miw.get_material()
         if do_save:
             m = [s_raw, density]
-            self._config["materials_list"].append(m)
+            self.config()["materials_list"].append(m)
             config.save_delayed()
             self.toolbar_update_requested.emit(False)
 
@@ -306,7 +302,7 @@ class MacrosFastMaterial(Macros):
     def remember_current_material(self) -> None:
         def _remember_material():
             m = get_material_in_current_part()
-            self._config["materials_list"].append(m)
+            self.config()["materials_list"].append(m)
             config.save_delayed()
             self.toolbar_update_requested.emit(True)
         self.execute(_remember_material)

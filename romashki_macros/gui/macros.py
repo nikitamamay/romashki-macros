@@ -15,7 +15,11 @@ class Macros(QtCore.QObject):
     """
 
     settings_requested = QtCore.pyqtSignal(str)
-    """Signature: `settings_requested(macros_codename: str)` """
+    """
+    Signature: `settings_requested(macros_codename: str)`.
+
+    `macros_codename` can be `""`.
+    """
 
     toolbar_update_requested = QtCore.pyqtSignal(bool)
     """Signature: `toolbar_update_requested(is_immediate: bool)` """
@@ -24,11 +28,13 @@ class Macros(QtCore.QObject):
         super().__init__()
         self.code_name = code_name
         self.full_name = full_name
-        self._config = config.macros(self.code_name)
         self._parent_widget: QtWidgets.QWidget|None = None
 
         Macros.check_config(self)  # вызов базовой проверки
         self.check_config()  # вызов проверки, переопределенной в классе макроса
+
+    def config(self) -> dict:
+        return config.cr.macros(self.code_name)
 
     def set_parent_widget(self, widget: QtWidgets.QWidget) -> None:
         """
@@ -64,10 +70,7 @@ class Macros(QtCore.QObject):
         В связи с этим вызывать `super().check_config()` в переопределенном методе
         у дочернего класса не требуется.
         """
-        try:
-            assert isinstance(self._config, dict)
-        except:
-            self._config = {}
+        self.config()  # гарантирует, что возвращаемое значение будет именно dict. Создает словарь, если его нет.
 
     def execute(self, func) -> bool:
         """

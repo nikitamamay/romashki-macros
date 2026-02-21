@@ -11,7 +11,7 @@
 """
 from . import config
 
-config.init_config()
+config.cr.init_config()
 
 
 from PyQt5 import QtGui, QtWidgets
@@ -54,7 +54,7 @@ if not is_kompas_running():
 w = MainWindow()
 w.show()
 
-config.execute_after_config_reset()
+config.cr.execute_after_config_reset()
 
 app.exec()
 

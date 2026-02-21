@@ -13,6 +13,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -30,17 +31,8 @@ class MacrosFastExport(Macros):
         super().__init__("fast_export", "Быстрый экспорт")
 
     def check_config(self) -> None:
-        try:
-            assert "ask_if_rewrite" in self._config
-            assert isinstance(self._config["ask_if_rewrite"], bool)
-        except:
-            self._config["ask_if_rewrite"] = False
-
-        try:
-            assert "always_ask_filepath" in self._config
-            assert isinstance(self._config["always_ask_filepath"], bool)
-        except:
-            self._config["always_ask_filepath"] = False
+        config_reader.ensure_dict_value(self.config(), "ask_if_rewrite", bool, False)
+        config_reader.ensure_dict_value(self.config(), "always_ask_filepath", bool, False)
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         btn_pdf = QtWidgets.QToolButton()
@@ -66,8 +58,8 @@ class MacrosFastExport(Macros):
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _update_config():
-            self._config["ask_if_rewrite"] = cb_ask_if_rewrite.isChecked()
-            self._config["always_ask_filepath"] = cb_always_ask.isChecked()
+            self.config()["ask_if_rewrite"] = cb_ask_if_rewrite.isChecked()
+            self.config()["always_ask_filepath"] = cb_always_ask.isChecked()
             config.save_delayed()
 
         w = QtWidgets.QWidget()
@@ -76,11 +68,11 @@ class MacrosFastExport(Macros):
         w.setLayout(l)
 
         cb_ask_if_rewrite = QtWidgets.QCheckBox("Спрашивать о перезаписи, если файл уже существует")
-        cb_ask_if_rewrite.setChecked(self._config["ask_if_rewrite"])
+        cb_ask_if_rewrite.setChecked(self.config()["ask_if_rewrite"])
         cb_ask_if_rewrite.stateChanged.connect(_update_config)
 
         cb_always_ask = QtWidgets.QCheckBox("Всегда спрашивать путь файла при экспорте")
-        cb_always_ask.setChecked(self._config["always_ask_filepath"])
+        cb_always_ask.setChecked(self.config()["always_ask_filepath"])
         cb_always_ask.stateChanged.connect(_update_config)
 
         l.addWidget(cb_ask_if_rewrite, 0, 0)
@@ -117,7 +109,7 @@ class MacrosFastExport(Macros):
         if current_doc_path == "":
             force_ask_path = True
 
-        if force_ask_path or self._config["always_ask_filepath"]:
+        if force_ask_path or self.config()["always_ask_filepath"]:
             path, f = QtWidgets.QFileDialog.getSaveFileName(
                 self._parent_widget,
                 "Выбрать путь для сохранения",
@@ -128,7 +120,7 @@ class MacrosFastExport(Macros):
             return path  # может быть "", если пользователь отменил выбор пути файла в диалоге
         else:
             path = auto_path
-            if self._config["ask_if_rewrite"] and os.path.exists(path) and os.path.isfile(path):
+            if self.config()["ask_if_rewrite"] and os.path.exists(path):  # and os.path.isfile(path):
                 dialog = QtWidgets.QMessageBox(
                     QtWidgets.QMessageBox.Icon.Question,
                     "Перезапись файла",

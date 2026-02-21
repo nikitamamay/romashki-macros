@@ -10,6 +10,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui.macros import MacrosSingleCommand
 
@@ -29,26 +30,19 @@ class MacrosSurfaceRoughnessAndTechDemand(MacrosSingleCommand):
         )
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["surface_finish_text"], str)
-        except:
-            self._config["surface_finish_text"] = "Ra 25"
-            config.save_delayed()
-
-        try:
-            assert isinstance(self._config["technical_demand"], str)
-        except:
-            self._config["technical_demand"] = "* Размеры для справок.\nОбщие допуски по ГОСТ 30893.2 - mK."
-            config.save_delayed()
+        config_reader.ensure_dict_value(self.config(), "surface_finish_text", str, "Ra 25")
+        config_reader.ensure_dict_value(
+            self.config(), "technical_demand", str,
+            "* Размеры для справок.\nОбщие допуски по ГОСТ 30893.2 - mK.")
 
     def execute_macros(self) -> None:
-        set_surface_finish(self._config["surface_finish_text"])
-        set_technical_demand(self._config["technical_demand"])
+        set_surface_finish(self.config()["surface_finish_text"])
+        set_technical_demand(self.config()["technical_demand"])
 
     def settings_widget(self) -> QtWidgets.QWidget:
         def _apply_changes() -> None:
-            self._config["surface_finish_text"] = le_sf.text()
-            self._config["technical_demand"] = te_td.toPlainText()
+            self.config()["surface_finish_text"] = le_sf.text()
+            self.config()["technical_demand"] = te_td.toPlainText()
             # print(repr(te_td.toPlainText()))
             config.save_delayed()
 
@@ -57,11 +51,11 @@ class MacrosSurfaceRoughnessAndTechDemand(MacrosSingleCommand):
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         w.setLayout(l)
 
-        le_sf = QtWidgets.QLineEdit(self._config["surface_finish_text"])
+        le_sf = QtWidgets.QLineEdit(self.config()["surface_finish_text"])
         le_sf.textChanged.connect(_apply_changes)
 
         te_td = QtWidgets.QTextEdit()
-        te_td.setPlainText(self._config["technical_demand"])
+        te_td.setPlainText(self.config()["technical_demand"])
         te_td.textChanged.connect(_apply_changes)
 
         l.addWidget(QtWidgets.QLabel("Текст неуказанной шероховатости:"), 0, 0, 1, 1)

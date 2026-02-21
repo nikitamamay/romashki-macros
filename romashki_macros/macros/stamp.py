@@ -94,7 +94,7 @@ def stamp_numbers(max_number: int = 10000, min_number: int = 0) -> None:
         stamp.Update()
 
 
-def stamp(data: dict[int, str], sheet_number: int = 1) -> None:
+def stamp(data: dict[int|str, str], sheet_number: int = 1) -> None:
     """
     Заполняет основную надпись на листе `sheet_number` по словарю `data`.
 

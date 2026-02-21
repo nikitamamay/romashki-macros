@@ -154,11 +154,11 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
         self.setWindowFlag(QtCore.Qt.WindowType.WindowMaximizeButtonHint, False)
 
         self.cb_stays_on_top = QtWidgets.QCheckBox("Показывать окно поверх всех окон")
-        self.cb_stays_on_top.setChecked(config.interface()["stays_on_top"])
+        self.cb_stays_on_top.setChecked(config.cr.cfg_interface()["stays_on_top"])
 
         self.sb_icon_size = QtWidgets.QSpinBox(self)
         self.sb_icon_size.setRange(0, 10*9)
-        self.sb_icon_size.setValue(config.get_icon_size())
+        self.sb_icon_size.setValue(config.cr.cfg_interface()["icon_size"])
 
         self.toolbar_selector = gui_widgets.StringListSelector(self._create_new_toolbar_item)
         self.toolbar_selector.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Expanding)
@@ -183,24 +183,25 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
         self.toolbar_selector.list_changed.connect(self._toolbars_changed)
         self.toolbar_edit_widget.data_edited.connect(self._toolbar_edited)
 
-        config.set_after_config_reset_handler(self.reset_toolbars)
+        config.cr.set_after_config_reset_handler(self.reset_toolbars)
 
         self.init_toolbar_selector()
         self.toolbar_selector.clear_selection()
 
     def set_stays_on_top(self) -> None:
-        config.interface()["stays_on_top"] = self.cb_stays_on_top.isChecked()
+        config.cr.cfg_interface()["stays_on_top"] = self.cb_stays_on_top.isChecked()
         self.stays_on_top_changed.emit()
         config.save()
 
     def set_icon_size(self, size: int) -> None:
-        config.set_icon_size(size)
+        assert isinstance(size, int)
+        config.cr.cfg_interface()["icon_size"] = size
         self.icon_size_changed.emit()
         config.save()
 
     def init_toolbar_selector(self) -> None:
         self.toolbar_selector.clear_items(True)
-        for tb_spec in config.toolbars():
+        for tb_spec in config.cr.cfg_interface_toolbars():
             item = self._create_new_toolbar_item()
             item.setData(tb_spec["name"], QtCore.Qt.ItemDataRole.DisplayRole)
             item.setData(tb_spec, self.ITEM_ROLE_TOOLBAR_DATA)
@@ -208,7 +209,7 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
         self.toolbar_selector.clear_selection()
 
     def reset_toolbars(self) -> None:
-        config.toolbars().clear()
+        config.cr.cfg_interface_toolbars().clear()
         for macros in macroses:
             tb_data = {
                 "name": f"Панель «{macros.full_name}»",
@@ -216,7 +217,7 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
                 "is_hidden": False,
                 "contents": [[macros.code_name, w_name] for w_name in macros.toolbar_widgets().keys()],
             }
-            config.toolbars().append(tb_data)
+            config.cr.cfg_interface_toolbars().append(tb_data)
         self.init_toolbar_selector()
         self.widgets_changed.emit()
         self.toolbars_reset.emit()
@@ -233,11 +234,11 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
         return item
 
     def _toolbars_changed(self) -> None:
-        config.toolbars().clear()
+        config.cr.cfg_interface_toolbars().clear()
         for item in self.toolbar_selector.iterate_items():
             tb_data = item.data(self.ITEM_ROLE_TOOLBAR_DATA)
             tb_data["name"] = item.data(QtCore.Qt.ItemDataRole.DisplayRole)
-            config.toolbars().append(tb_data)
+            config.cr.cfg_interface_toolbars().append(tb_data)
         config.save_delayed()
         self.widgets_changed.emit()
 

@@ -15,6 +15,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui import widgets as gui_widgets
 from ..gui.macros import Macros
@@ -35,14 +36,11 @@ class MacrosFastParts(Macros):
         self._last_selected_target_asm_path: str = ""
 
     def check_config(self):
-        try:
-            assert isinstance(self._config["do_close_child_docs"], bool)
-        except:
-            self._config["do_close_child_docs"] = False
+        config_reader.ensure_dict_value(self.config(), "do_close_child_docs", bool, False)
 
     def settings_widget(self):
         def _set_do_close_child_docs(state: bool) -> None:
-            self._config["do_close_child_docs"] = state
+            self.config()["do_close_child_docs"] = state
             config.save_delayed()
 
         w = QtWidgets.QWidget()
@@ -51,7 +49,7 @@ class MacrosFastParts(Macros):
         w.setLayout(l)
 
         cb = QtWidgets.QCheckBox("Закрывать файлы деталей при их создании из выбранных тел")
-        cb.setChecked(self._config["do_close_child_docs"])
+        cb.setChecked(self.config()["do_close_child_docs"])
         cb.stateChanged.connect(_set_do_close_child_docs)
 
         l.addWidget(cb, 0, 0, 1, 1)
@@ -131,7 +129,7 @@ class MacrosFastParts(Macros):
             return
 
         self.execute(
-            lambda: create_parts_from_selected_bodies(target_asm_path, parts_dir_path, self._config["do_close_child_docs"])
+            lambda: create_parts_from_selected_bodies(target_asm_path, parts_dir_path, self.config()["do_close_child_docs"])
         )
 
     def _create_single_out_part(self) -> None:

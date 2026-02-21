@@ -15,7 +15,7 @@ from .lib_macros.core import *
 import re
 
 
-DENSITY_STEEL = 7850  # kg/m3
+DENSITY_STEEL: float = 7850.0  # kg/m3
 """ Плотность стали. """
 
 

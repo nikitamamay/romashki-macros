@@ -11,6 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from ..macros.lib_macros.core import *
 from .. import config
+from ..utils import config_reader
 
 from ..gui.macros import Macros
 
@@ -25,11 +26,7 @@ class MacrosSheetLayout(Macros):
         super().__init__("sheet_layout", "Оформление чертежа")
 
     def check_config(self) -> None:
-        try:
-            assert isinstance(self._config["lib_path"], str)
-        except:
-            self._config["lib_path"] = ""
-            config.save_delayed()
+        config_reader.ensure_dict_value(self.config(), "lib_path", str, "")
 
     def toolbar_widgets(self) -> dict[str, QtWidgets.QWidget]:
         def _get_apply_format_function(i: int):
@@ -75,19 +72,19 @@ class MacrosSheetLayout(Macros):
                 ext_filter,
             )
             if lib_path != "":
-                self._config["lib_path"] = lib_path
-                le_lib_path.setText(self._config["lib_path"])
+                self.config()["lib_path"] = lib_path
+                le_lib_path.setText(self.config()["lib_path"])
 
         def reset() -> None:
-            self._config["lib_path"] = ""
-            le_lib_path.setText(self._config["lib_path"])
+            self.config()["lib_path"] = ""
+            le_lib_path.setText(self.config()["lib_path"])
 
         w = QtWidgets.QWidget()
         l = QtWidgets.QGridLayout()
         l.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         w.setLayout(l)
 
-        le_lib_path = QtWidgets.QLineEdit(self._config["lib_path"])
+        le_lib_path = QtWidgets.QLineEdit(self.config()["lib_path"])
         le_lib_path.setReadOnly(True)
 
         btn_choose = QtWidgets.QPushButton("Выбрать...")
@@ -104,7 +101,7 @@ class MacrosSheetLayout(Macros):
         return w
 
     def apply_lib_layout(self) -> None:
-        set_sheets_layout_library(self._config["lib_path"])
+        set_sheets_layout_library(self.config()["lib_path"])
 
     def apply_sheet_format(self, fmt: int) -> None:
         sheet_index = 0
