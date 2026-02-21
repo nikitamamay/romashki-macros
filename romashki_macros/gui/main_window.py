@@ -90,8 +90,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def createPopupMenu(self) -> QtWidgets.QMenu | None:
         menu = super().createPopupMenu()
-        if not menu is None:
-            menu.addAction(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настройки...", lambda: self.show_settings())
+        if menu is None:
+            menu = QtWidgets.QMenu(self)
+        menu.addAction(QtGui.QIcon(get_resource_path("img/settings.svg")), "Настройки...", lambda: self.show_settings())
         return menu
 
     def show_settings(self, macros_code_name: str = "") -> None:

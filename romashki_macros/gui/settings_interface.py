@@ -160,8 +160,13 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
         self.sb_icon_size.setRange(0, 10*9)
         self.sb_icon_size.setValue(config.cr.cfg_interface()["icon_size"])
 
+        self.btn_reset_toolbars = QtWidgets.QPushButton("Сбросить")
+        self.btn_reset_toolbars.setToolTip("Сбросить панели инструментов")
+        self.btn_reset_toolbars.clicked.connect(self.ask_reset_toolbars)
+
         self.toolbar_selector = gui_widgets.StringListSelector(self._create_new_toolbar_item)
         self.toolbar_selector.setSizePolicy(QtWidgets.QSizePolicy.Policy.Maximum, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.toolbar_selector.add_custom_button(self.btn_reset_toolbars)
 
         self.toolbar_edit_widget = ToolBarEditWidget()
 
@@ -221,6 +226,18 @@ class InterfaceCustomizationWidget(QtWidgets.QWidget):
         self.init_toolbar_selector()
         self.widgets_changed.emit()
         self.toolbars_reset.emit()
+
+    def ask_reset_toolbars(self) -> None:
+        btn = QtWidgets.QMessageBox.question(
+            self,
+            f"Сбросить настройки панелей интерфейса?",
+            "Все панели будут удалены и созданы заново по умолчанию для каждого макроса.<br><br>" \
+            "Вы уверены, что хотите сбросить настройки паналей интерфейса?",
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.Cancel,
+            QtWidgets.QMessageBox.StandardButton.Cancel
+        )
+        if btn == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.reset_toolbars()
 
     def _create_new_toolbar_item(self) -> QtGui.QStandardItem:
         toolbar_data = {
